@@ -1,0 +1,61 @@
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Navigation from './components/Navigation';
+import LoginPage from './pages/LoginPage';
+import UploadPage from './pages/UploadPage';
+import ListPage from './pages/ListPage';
+import PrintPage from './pages/PrintPage';
+import SettingsPage from './pages/SettingsPage';
+import { checkAuth } from './services/api';
+import './App.css';
+
+function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const verifyAuth = async () => {
+      try {
+        const result = await checkAuth();
+        setIsAuthenticated(result.authenticated);
+      } catch (error) {
+        setIsAuthenticated(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+    verifyAuth();
+  }, []);
+
+  if (loading) {
+    return <div className="loading-screen">Loading...</div>;
+  }
+
+  return (
+    <Router>
+      <div className="App">
+        {isAuthenticated ? (
+          <>
+            <Navigation />
+            <main className="main-content">
+              <Routes>
+                <Route path="/" element={<Navigate to="/upload" replace />} />
+                <Route path="/upload" element={<UploadPage />} />
+                <Route path="/list" element={<ListPage />} />
+                <Route path="/print" element={<PrintPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </main>
+          </>
+        ) : (
+          <Routes>
+            <Route path="*" element={<LoginPage onLogin={() => setIsAuthenticated(true)} />} />
+          </Routes>
+        )}
+      </div>
+    </Router>
+  );
+}
+
+export default App;
+
