@@ -103,18 +103,19 @@ router.post('/generate', async (req, res) => {
       const loads = await Load.find(query).select('_id');
       loadIdsToUse = loads.map(load => load._id);
     } else if (load_ids && Array.isArray(load_ids)) {
-      // Use provided load IDs, but filter out cancelled
-      const loads = await Load.find({
+      // Use provided load IDs, but filter out cancelled (and optionally unconfirmed)
+      const query = {
         _id: { $in: load_ids },
         cancelled: false
-      }).select('_id');
+      };
 
-      // Filter by confirmed status if needed
+      // Only include confirmed loads unless user explicitly allows unconfirmed
       if (!includeUnconfirmed) {
-        loadIdsToUse = loads.filter(load => load.confirmed).map(load => load._id);
-      } else {
-        loadIdsToUse = loads.map(load => load._id);
+        query.confirmed = true;
       }
+
+      const loads = await Load.find(query).select('_id');
+      loadIdsToUse = loads.map(load => load._id);
     } else {
       return res.status(400).json({ error: 'Either load_ids or rule_id must be provided' });
     }

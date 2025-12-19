@@ -11,6 +11,7 @@ const ListPage = () => {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [selectedRule, setSelectedRule] = useState(null);
+  const [includeUnconfirmed, setIncludeUnconfirmed] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -68,7 +69,7 @@ const ListPage = () => {
     setGenerating(true);
     try {
       const invoiceData = {
-        includeUnconfirmed: false // Only include confirmed loads
+        includeUnconfirmed
       };
 
       // Use rule if selected, otherwise use all non-cancelled loads
@@ -130,6 +131,8 @@ const ListPage = () => {
         generating={generating}
         selectedRule={selectedRule}
         onClearRule={() => setSelectedRule(null)}
+        includeUnconfirmed={includeUnconfirmed}
+        onToggleIncludeUnconfirmed={setIncludeUnconfirmed}
       />
     </div>
   );

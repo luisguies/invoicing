@@ -6,7 +6,9 @@ const GenerateInvoiceButton = ({
   disabled, 
   generating, 
   selectedRule,
-  onClearRule 
+  onClearRule,
+  includeUnconfirmed,
+  onToggleIncludeUnconfirmed
 }) => {
   return (
     <div className="generate-invoice-section">
@@ -20,6 +22,15 @@ const GenerateInvoiceButton = ({
           )}
         </div>
       )}
+      <label className="include-unconfirmed-toggle">
+        <input
+          type="checkbox"
+          checked={!!includeUnconfirmed}
+          onChange={(e) => onToggleIncludeUnconfirmed && onToggleIncludeUnconfirmed(e.target.checked)}
+          disabled={generating}
+        />
+        Include unconfirmed loads
+      </label>
       <button
         className="generate-invoice-btn"
         onClick={onClick}
@@ -35,7 +46,9 @@ const GenerateInvoiceButton = ({
         )}
       </button>
       <p className="generate-hint">
-        Only non-cancelled, confirmed loads will be included in the invoice.
+        {includeUnconfirmed
+          ? 'Only non-cancelled loads will be included in the invoice.'
+          : 'Only non-cancelled, confirmed loads will be included in the invoice.'}
       </p>
     </div>
   );
