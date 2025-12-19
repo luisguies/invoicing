@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatDate, formatDateInput } from '../utils/dateUtils';
-import { updateLoad, cancelLoad, confirmLoad, updateLoadCarrier, getCarriers, patchLoadDriver } from '../services/api';
+import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver } from '../services/api';
 import './LoadItem.css';
 
 const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = false, ensureDriversLoaded }) => {
@@ -21,10 +21,22 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
     delivery_state: load.delivery_state
   });
 
-  const hasConflicts = load.date_conflict_ids && load.date_conflict_ids.length > 0;
-  const needsConfirmation = hasConflicts && !load.confirmed;
+  const hasDriverConflicts = load.driver_conflict === true;
   const needsCarrierReview = !load.carrier_id && load.needs_review;
   const carrierId = load?.carrier_id?._id || null;
+
+  const driverConflictDetails = (() => {
+    const ids = load.driver_conflict_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return null;
+    // If populated, show load numbers; otherwise fall back to "N conflicting loads".
+    const first = ids[0];
+    const populated = first && typeof first === 'object' && !!first.load_number;
+    if (populated) {
+      const nums = ids.map((l) => l?.load_number).filter(Boolean);
+      return nums.length > 0 ? `Driver conflict with load(s): ${nums.join(', ')}` : 'Driver conflict detected';
+    }
+    return `Driver conflict with ${ids.length} other load(s)`;
+  })();
 
   const currentDriverId = (() => {
     if (!load?.driver_id) return null;
@@ -84,18 +96,6 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
       onUpdate(updatedLoad, { refresh: true });
     } catch (error) {
       alert('Failed to update load: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleConfirm = async () => {
-    setLoading(true);
-    try {
-      const updatedLoad = await confirmLoad(load._id);
-      onUpdate(updatedLoad, { refresh: true });
-    } catch (error) {
-      alert('Failed to confirm load: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
@@ -209,10 +209,10 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
   }
 
   return (
-    <tr className={`load-item ${load.cancelled ? 'cancelled' : ''} ${needsConfirmation ? 'needs-confirmation' : ''} ${needsCarrierReview ? 'needs-review' : ''}`}>
+    <tr className={`load-item ${load.cancelled ? 'cancelled' : ''} ${needsCarrierReview ? 'needs-review' : ''}`}>
       <td>
-        {hasConflicts && (
-          <span className="warning-icon" title="Date conflict detected">⚠️</span>
+        {hasDriverConflicts && (
+          <span className="warning-icon" title={driverConflictDetails || 'Driver conflict detected'}>👤⚠️</span>
         )}
         {needsCarrierReview && (
           <span className="warning-icon" title="Carrier needs review">🔍</span>
@@ -293,16 +293,6 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
         )}
       </td>
       <td className="actions">
-        {needsConfirmation && (
-          <button
-            className="confirm-btn"
-            onClick={handleConfirm}
-            disabled={loading}
-            title="Confirm this load (required due to date conflicts)"
-          >
-            Confirm
-          </button>
-        )}
         <button
           className={load.cancelled ? 'uncancel-btn' : 'cancel-btn'}
           onClick={handleCancel}

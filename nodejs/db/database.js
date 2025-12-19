@@ -90,6 +90,16 @@ const loadSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Load'
   }],
+  // Driver conflicts are informational only (never block saving/assignment).
+  // A conflict exists iff [pickup, delivery) intervals overlap with another load for the same driver.
+  driver_conflict: {
+    type: Boolean,
+    default: false
+  },
+  driver_conflict_ids: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Load'
+  }],
   created_at: {
     type: Date,
     default: Date.now

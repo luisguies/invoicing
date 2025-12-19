@@ -12,10 +12,6 @@
   color: #999;
 }
 
-.load-item.needs-confirmation {
-  background-color: #fff3cd;
-}
-
 .load-item.needs-review {
   background-color: #ffe6e6;
 }
@@ -54,12 +50,6 @@
 .actions button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.confirm-btn {
-  background-color: #ffc107 !important;
-  color: #000;
-  font-weight: 600;
 }
 
 .cancel-btn {

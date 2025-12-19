@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Load } = require('../db/database');
 const { checkAndUpdateConflicts, removeFromConflictLists } = require('../services/loadConflictService');
+const { recalculateDriverConflictsForDriver, checkAndUpdateDriverConflictsForLoad } = require('../services/driverConflictService');
 const { createCarrierAlias } = require('../services/carrierResolutionService');
 
 function safeLower(s) {
@@ -56,6 +57,7 @@ router.get('/', async (req, res) => {
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
       .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
       .sort({ created_at: -1 });
 
     res.json(loads);
@@ -79,6 +81,7 @@ router.get('/grouped', async (req, res) => {
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
       .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
       .sort({ carrier_id: 1, pickup_date: 1 });
 
     // Group by carrier
@@ -137,7 +140,8 @@ router.get('/:id', async (req, res) => {
     const load = await Load.findById(req.params.id)
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
-      .populate('date_conflict_ids', 'load_number pickup_date delivery_date');
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date');
     
     if (!load) {
       return res.status(404).json({ error: 'Load not found' });
@@ -186,10 +190,27 @@ router.post('/', async (req, res) => {
       );
     }
 
+    // Driver conflicts are informational only; never block create.
+    if (load.driver_id && load.pickup_date && load.delivery_date) {
+      try {
+        await recalculateDriverConflictsForDriver(load.driver_id);
+      } catch (e) {
+        console.error('Driver conflict recalculation failed (create):', e);
+      }
+    } else {
+      // Ensure field is present/clean for unassigned drivers.
+      try {
+        await checkAndUpdateDriverConflictsForLoad(load._id, load.pickup_date, load.delivery_date, load.driver_id);
+      } catch (e) {
+        console.error('Driver conflict update failed (create):', e);
+      }
+    }
+
     const populatedLoad = await Load.findById(load._id)
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
-      .populate('date_conflict_ids', 'load_number pickup_date delivery_date');
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date');
 
     res.status(201).json(populatedLoad);
   } catch (error) {
@@ -228,12 +249,29 @@ router.put('/:id', async (req, res) => {
           load.driver_id
         );
       }
+
+      // Driver conflicts: strict overlap, same driver only, informational.
+      const oldDriverStr = oldDriverId ? oldDriverId.toString() : null;
+      const newDriverStr = load.driver_id ? load.driver_id.toString() : null;
+      try {
+        if (oldDriverStr && oldDriverStr !== newDriverStr) {
+          await recalculateDriverConflictsForDriver(oldDriverId);
+        }
+        if (newDriverStr) {
+          await recalculateDriverConflictsForDriver(load.driver_id);
+        } else {
+          await checkAndUpdateDriverConflictsForLoad(load._id, load.pickup_date, load.delivery_date, null);
+        }
+      } catch (e) {
+        console.error('Driver conflict recalculation failed (update):', e);
+      }
     }
 
     const populatedLoad = await Load.findById(load._id)
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
-      .populate('date_conflict_ids', 'load_number pickup_date delivery_date');
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date');
 
     res.json(populatedLoad);
   } catch (error) {
@@ -271,12 +309,27 @@ router.patch('/:id', async (req, res) => {
           load.driver_id
         );
       }
+
+      // Driver conflicts: informational only; never reject assignment.
+      try {
+        if (oldDriverId) {
+          await recalculateDriverConflictsForDriver(oldDriverId);
+        }
+        if (load.driver_id) {
+          await recalculateDriverConflictsForDriver(load.driver_id);
+        } else {
+          await checkAndUpdateDriverConflictsForLoad(load._id, load.pickup_date, load.delivery_date, null);
+        }
+      } catch (e) {
+        console.error('Driver conflict recalculation failed (patch driver):', e);
+      }
     }
 
     const populatedLoad = await Load.findById(load._id)
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
-      .populate('date_conflict_ids', 'load_number pickup_date delivery_date');
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date');
 
     res.json(populatedLoad);
   } catch (error) {

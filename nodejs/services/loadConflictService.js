@@ -1,7 +1,25 @@
 const { Load } = require('../db/database');
 
 /**
- * Check if two date ranges overlap or have the same pickup date
+ * Normalize a Date to a date-only UTC midnight Date.
+ * This keeps comparisons strictly "date-only" (no times).
+ * @param {Date} d
+ * @returns {Date}
+ */
+function toUtcDateOnly(d) {
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const day = d.getUTCDate();
+  return new Date(Date.UTC(y, m, day));
+}
+
+/**
+ * Check if two date ranges overlap using strict half-open interval logic:
+ * [pickup, delivery) overlaps iff:
+ * pickup1 < delivery2 AND pickup2 < delivery1
+ *
+ * Boundary-touching is allowed:
+ * delivery1 === pickup2 => NO conflict
  * @param {Date} pickup1 - First pickup date
  * @param {Date} delivery1 - First delivery date
  * @param {Date} pickup2 - Second pickup date
@@ -9,18 +27,12 @@ const { Load } = require('../db/database');
  * @returns {boolean} True if dates conflict
  */
 function datesConflict(pickup1, delivery1, pickup2, delivery2) {
-  // Same pickup date
-  if (pickup1.getTime() === pickup2.getTime()) {
-    return true;
-  }
+  const p1 = toUtcDateOnly(pickup1);
+  const d1 = toUtcDateOnly(delivery1);
+  const p2 = toUtcDateOnly(pickup2);
+  const d2 = toUtcDateOnly(delivery2);
 
-  // Crossing dates: pickup1 is before delivery2 AND delivery1 is after pickup2
-  // This means the date ranges overlap
-  if (pickup1 < delivery2 && delivery1 > pickup2) {
-    return true;
-  }
-
-  return false;
+  return p1 < d2 && p2 < d1;
 }
 
 /**
@@ -75,11 +87,6 @@ async function updateLoadConflicts(loadId, conflictIds) {
   }
 
   load.date_conflict_ids = conflictIds;
-  
-  // If there are conflicts, set confirmed to false
-  if (conflictIds.length > 0) {
-    load.confirmed = false;
-  }
 
   await load.save();
   return load;
@@ -102,7 +109,6 @@ async function checkAndUpdateConflicts(loadId, pickupDate, deliveryDate, driverI
     const conflictLoad = await Load.findById(conflictId);
     if (conflictLoad && !conflictLoad.date_conflict_ids.includes(loadId)) {
       conflictLoad.date_conflict_ids.push(loadId);
-      conflictLoad.confirmed = false; // Require re-confirmation
       await conflictLoad.save();
     }
   }
