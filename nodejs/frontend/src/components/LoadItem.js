@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatDate, formatDateInput } from '../utils/dateUtils';
+import { formatDate, formatDateInput, parseDateInputToUtcDate } from '../utils/dateUtils';
 import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver } from '../services/api';
 import './LoadItem.css';
 
@@ -82,10 +82,20 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
   const handleSave = async () => {
     setLoading(true);
     try {
+      if (!formData.pickup_date || !formData.delivery_date) {
+        alert('Pickup and delivery dates are required.');
+        return;
+      }
+      const pickupUtc = parseDateInputToUtcDate(formData.pickup_date);
+      const deliveryUtc = parseDateInputToUtcDate(formData.delivery_date);
+      if (!pickupUtc || !deliveryUtc) {
+        alert('Invalid date format. Please use the date picker.');
+        return;
+      }
       const updatedLoad = await updateLoad(load._id, {
         ...formData,
-        pickup_date: new Date(formData.pickup_date),
-        delivery_date: new Date(formData.delivery_date)
+        pickup_date: pickupUtc,
+        delivery_date: deliveryUtc
       });
       onUpdate(updatedLoad, { refresh: true });
       setEditing(false);
@@ -158,15 +168,19 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
         <td>
           <input
             type="date"
+            id={`pickup-date-${load._id}`}
+            name="pickup_date"
             value={formData.pickup_date}
-            onChange={(e) => setFormData({ ...formData, pickup_date: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, pickup_date: e.target.value }))}
           />
         </td>
         <td>
           <input
             type="date"
+            id={`delivery-date-${load._id}`}
+            name="delivery_date"
             value={formData.delivery_date}
-            onChange={(e) => setFormData({ ...formData, delivery_date: e.target.value })}
+            onChange={(e) => setFormData((prev) => ({ ...prev, delivery_date: e.target.value }))}
           />
         </td>
         <td>
