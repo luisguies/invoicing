@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInvoices, downloadInvoicePDF, getInvoice } from '../services/api';
+import { getInvoices, downloadInvoicePDF, getInvoice, deleteInvoice } from '../services/api';
 import { formatDate } from '../utils/dateUtils';
 import PDFViewer from '../components/PDFViewer';
 import './PrintPage.css';
@@ -8,6 +8,7 @@ const PrintPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
 
@@ -35,6 +36,29 @@ const PrintPage = () => {
       alert('Failed to download invoice: ' + (error.response?.data?.error || error.message));
     } finally {
       setDownloading(null);
+    }
+  };
+
+  const handleDelete = async (invoiceId) => {
+    if (!window.confirm('Delete this invoice? This will also delete the stored PDF file.')) {
+      return;
+    }
+
+    setDeleting(invoiceId);
+    try {
+      await deleteInvoice(invoiceId);
+
+      // If we're viewing this invoice, close the viewer.
+      if (viewingInvoice?._id === invoiceId) {
+        handleCloseViewer();
+      }
+
+      // Refresh list
+      await loadInvoices();
+    } catch (error) {
+      alert('Failed to delete invoice: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -94,7 +118,10 @@ const PrintPage = () => {
                 </p>
                 <p>
                   <strong>Total Amount:</strong> $
-                  {invoice.load_ids?.reduce((sum, load) => sum + (load.carrier_pay || 0), 0).toFixed(2) || '0.00'}
+                  {(typeof invoice.total === 'number'
+                    ? invoice.total
+                    : (invoice.subtotal || 0)
+                  ).toFixed(2)}
                 </p>
               </div>
               <div className="invoice-actions">
@@ -110,6 +137,13 @@ const PrintPage = () => {
                   disabled={downloading === invoice._id}
                 >
                   {downloading === invoice._id ? 'Downloading...' : 'Download PDF'}
+                </button>
+                <button
+                  className="delete-btn"
+                  onClick={() => handleDelete(invoice._id)}
+                  disabled={deleting === invoice._id}
+                >
+                  {deleting === invoice._id ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             </div>

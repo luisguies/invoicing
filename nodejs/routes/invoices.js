@@ -62,6 +62,35 @@ router.get('/:id/pdf', async (req, res) => {
   }
 });
 
+// Delete invoice (and remove stored PDF if present)
+router.delete('/:id', async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const pdfPath = invoice.pdf_path;
+    if (pdfPath && fs.existsSync(pdfPath)) {
+      try {
+        fs.unlinkSync(pdfPath);
+      } catch (e) {
+        // Don't fail the delete if file removal fails; report it.
+        console.error('Failed to delete invoice PDF:', e);
+      }
+    }
+
+    await Invoice.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Invoice deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Generate invoice
 router.post('/generate', async (req, res) => {
   try {

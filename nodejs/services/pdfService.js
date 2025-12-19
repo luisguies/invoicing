@@ -68,9 +68,13 @@ async function generateInvoicePDF(loadIds, invoiceData) {
       };
     }
 
-    const price = load.carrier_pay;
+    const price = Number(load.carrier_pay || 0);
     const ratePercent = `${defaultRate}%`;
-    const amount = price; // Can apply rate calculation here
+
+    // Dispatcher fee (commission) is price * (rate/100).
+    // Example: $2000 @ 5% => $100
+    const rateDecimal = Number(defaultRate || 0) / 100;
+    const amount = price * rateDecimal;
 
     subtotal += amount;
 

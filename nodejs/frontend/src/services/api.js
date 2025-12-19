@@ -214,6 +214,11 @@ export const generateInvoice = async (invoiceData) => {
   return response.data;
 };
 
+export const deleteInvoice = async (id) => {
+  const response = await api.delete(`/invoices/${id}`);
+  return response.data;
+};
+
 export const downloadInvoicePDF = async (id) => {
   const response = await api.get(`/invoices/${id}/pdf`, {
     responseType: 'blob'
