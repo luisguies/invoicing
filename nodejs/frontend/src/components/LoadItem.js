@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { formatDate, formatDateInput } from '../utils/dateUtils';
-import { updateLoad, cancelLoad, confirmLoad, updateLoadCarrier, getCarriers } from '../services/api';
+import { updateLoad, cancelLoad, confirmLoad, updateLoadCarrier, getCarriers, patchLoadDriver } from '../services/api';
 import './LoadItem.css';
 
-const LoadItem = ({ load, onUpdate, onDelete }) => {
+const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = false, ensureDriversLoaded }) => {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [carriers, setCarriers] = useState([]);
   const [selectedCarrierId, setSelectedCarrierId] = useState('');
   const [saveAlias, setSaveAlias] = useState(false);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
   const [formData, setFormData] = useState({
     load_number: load.load_number,
     carrier_pay: load.carrier_pay,
@@ -23,6 +24,13 @@ const LoadItem = ({ load, onUpdate, onDelete }) => {
   const hasConflicts = load.date_conflict_ids && load.date_conflict_ids.length > 0;
   const needsConfirmation = hasConflicts && !load.confirmed;
   const needsCarrierReview = !load.carrier_id && load.needs_review;
+  const carrierId = load?.carrier_id?._id || null;
+
+  const currentDriverId = (() => {
+    if (!load?.driver_id) return null;
+    if (typeof load.driver_id === 'string') return load.driver_id;
+    return load.driver_id._id || null;
+  })();
 
   // Load carriers when component mounts or when carrier_id is null
   useEffect(() => {
@@ -30,6 +38,18 @@ const LoadItem = ({ load, onUpdate, onDelete }) => {
       loadCarriers();
     }
   }, [needsCarrierReview]);
+
+  // Keep the dropdown in sync with the load prop
+  useEffect(() => {
+    setSelectedDriverId(currentDriverId ? currentDriverId.toString() : '');
+  }, [currentDriverId]);
+
+  // Lazily load drivers per carrier (cached in parent)
+  useEffect(() => {
+    if (carrierId && ensureDriversLoaded) {
+      ensureDriversLoaded(carrierId.toString());
+    }
+  }, [carrierId, ensureDriversLoaded]);
 
   const loadCarriers = async () => {
     try {
@@ -48,7 +68,7 @@ const LoadItem = ({ load, onUpdate, onDelete }) => {
         pickup_date: new Date(formData.pickup_date),
         delivery_date: new Date(formData.delivery_date)
       });
-      onUpdate(updatedLoad);
+      onUpdate(updatedLoad, { refresh: true });
       setEditing(false);
     } catch (error) {
       alert('Failed to update load: ' + (error.response?.data?.error || error.message));
@@ -61,7 +81,7 @@ const LoadItem = ({ load, onUpdate, onDelete }) => {
     setLoading(true);
     try {
       const updatedLoad = await cancelLoad(load._id, !load.cancelled);
-      onUpdate(updatedLoad);
+      onUpdate(updatedLoad, { refresh: true });
     } catch (error) {
       alert('Failed to update load: ' + (error.response?.data?.error || error.message));
     } finally {
@@ -73,7 +93,7 @@ const LoadItem = ({ load, onUpdate, onDelete }) => {
     setLoading(true);
     try {
       const updatedLoad = await confirmLoad(load._id);
-      onUpdate(updatedLoad);
+      onUpdate(updatedLoad, { refresh: true });
     } catch (error) {
       alert('Failed to confirm load: ' + (error.response?.data?.error || error.message));
     } finally {
@@ -90,11 +110,29 @@ const LoadItem = ({ load, onUpdate, onDelete }) => {
     setLoading(true);
     try {
       const updatedLoad = await updateLoadCarrier(load._id, selectedCarrierId, saveAlias);
-      onUpdate(updatedLoad);
+      onUpdate(updatedLoad, { refresh: true });
       setSelectedCarrierId('');
       setSaveAlias(false);
     } catch (error) {
       alert('Failed to update carrier: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDriverChange = async (e) => {
+    const nextValue = e.target.value; // '' means unassigned
+    const previousValue = selectedDriverId;
+
+    setSelectedDriverId(nextValue);
+    setLoading(true);
+    try {
+      const driverIdOrNull = nextValue ? nextValue : null;
+      const updatedLoad = await patchLoadDriver(load._id, driverIdOrNull);
+      onUpdate(updatedLoad, { refresh: false });
+    } catch (error) {
+      setSelectedDriverId(previousValue);
+      alert('Failed to update driver: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
@@ -186,6 +224,30 @@ const LoadItem = ({ load, onUpdate, onDelete }) => {
       <td>{load.pickup_city}, {load.pickup_state}</td>
       <td>{load.delivery_city}, {load.delivery_state}</td>
       <td className="amount">${load.carrier_pay?.toFixed(2)}</td>
+      <td className="driver-cell">
+        <select
+          className="driver-dropdown"
+          value={selectedDriverId}
+          onChange={handleDriverChange}
+          disabled={loading || !carrierId}
+          title={!carrierId ? 'Assign a carrier first' : undefined}
+        >
+          <option value="">UNASSIGNED</option>
+          {/* If a driver is already assigned but we haven't loaded the list yet, keep the selection stable */}
+          {selectedDriverId &&
+            (!Array.isArray(drivers) || drivers.length === 0) && (
+              <option value={selectedDriverId}>
+                {driversLoading ? 'Loading…' : 'Assigned (unknown)'}
+              </option>
+            )}
+          {Array.isArray(drivers) &&
+            drivers.map((d) => (
+              <option key={d._id} value={d._id}>
+                {d.name}
+              </option>
+            ))}
+        </select>
+      </td>
       <td className="carrier-cell">
         {needsCarrierReview ? (
           <div className="carrier-selector">

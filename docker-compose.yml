@@ -53,6 +53,8 @@ services:
       - PYTHONUNBUFFERED=1
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_API_VERSION=${OPENAI_API_VERSION:-gpt-4o-mini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/keys/spo-transport-invoices-9936b835298b.json
       - LOGIN_PASSWORD=${LOGIN_PASSWORD}
     restart: unless-stopped
     networks:

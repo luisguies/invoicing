@@ -87,6 +87,11 @@ export const updateLoad = async (id, data) => {
   return response.data;
 };
 
+export const patchLoadDriver = async (id, driverId) => {
+  const response = await api.patch(`/loads/${id}`, { driver_id: driverId });
+  return response.data;
+};
+
 export const deleteLoad = async (id) => {
   const response = await api.delete(`/loads/${id}`);
   return response.data;
@@ -144,6 +149,11 @@ export const deleteCarrier = async (id) => {
 // Drivers API
 export const getDrivers = async () => {
   const response = await api.get('/drivers');
+  return response.data;
+};
+
+export const getDriversByCarrier = async (carrierId) => {
+  const response = await api.get('/drivers', { params: { carrier_id: carrierId } });
   return response.data;
 };
 

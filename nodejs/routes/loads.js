@@ -4,6 +4,43 @@ const { Load } = require('../db/database');
 const { checkAndUpdateConflicts, removeFromConflictLists } = require('../services/loadConflictService');
 const { createCarrierAlias } = require('../services/carrierResolutionService');
 
+function safeLower(s) {
+  return (s || '').toString().toLowerCase();
+}
+
+function compareCarrierGroups(a, b) {
+  const aUnassigned = !a?.carrier?._id;
+  const bUnassigned = !b?.carrier?._id;
+  if (aUnassigned !== bUnassigned) return aUnassigned ? 1 : -1; // unassigned last
+
+  const aName = safeLower(a?.carrier?.name);
+  const bName = safeLower(b?.carrier?.name);
+  if (aName && bName && aName !== bName) return aName.localeCompare(bName);
+
+  const aId = a?.carrier?._id ? a.carrier._id.toString() : '';
+  const bId = b?.carrier?._id ? b.carrier._id.toString() : '';
+  return aId.localeCompare(bId);
+}
+
+function compareLoadsByDriverName(a, b) {
+  const aAssigned = !!a?.driver_id;
+  const bAssigned = !!b?.driver_id;
+  if (aAssigned !== bAssigned) return aAssigned ? -1 : 1; // assigned first
+
+  const aDriverName = safeLower(a?.driver_id?.name);
+  const bDriverName = safeLower(b?.driver_id?.name);
+  if (aDriverName !== bDriverName) return aDriverName.localeCompare(bDriverName);
+
+  // deterministic fallback to keep refresh ordering stable
+  const aPickup = a?.pickup_date ? new Date(a.pickup_date).getTime() : 0;
+  const bPickup = b?.pickup_date ? new Date(b.pickup_date).getTime() : 0;
+  if (aPickup !== bPickup) return aPickup - bPickup;
+
+  const aLoadNum = safeLower(a?.load_number);
+  const bLoadNum = safeLower(b?.load_number);
+  return aLoadNum.localeCompare(bLoadNum);
+}
+
 // Get all loads (with optional filters)
 router.get('/', async (req, res) => {
   try {
@@ -76,6 +113,16 @@ router.get('/grouped', async (req, res) => {
         },
         loads: unassignedLoads
       });
+    }
+
+    // Default sorting:
+    // - groups by carrier name/id
+    // - loads within group by assigned driver name (assigned first, UNASSIGNED last)
+    result.sort(compareCarrierGroups);
+    for (const group of result) {
+      if (Array.isArray(group.loads)) {
+        group.loads.sort(compareLoadsByDriverName);
+      }
     }
 
     res.json(result);
@@ -173,6 +220,49 @@ router.put('/:id', async (req, res) => {
       (load.delivery_date && load.delivery_date.getTime() !== oldDeliveryDate?.getTime()) ||
       (load.driver_id?.toString() !== oldDriverId?.toString())
     ) {
+      if (load.pickup_date && load.delivery_date) {
+        await checkAndUpdateConflicts(
+          load._id,
+          load.pickup_date,
+          load.delivery_date,
+          load.driver_id
+        );
+      }
+    }
+
+    const populatedLoad = await Load.findById(load._id)
+      .populate('carrier_id', 'name aliases')
+      .populate('driver_id', 'name aliases')
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date');
+
+    res.json(populatedLoad);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Patch load (driver assignment only)
+// PATCH /api/loads/:id
+// body: { driver_id } where driver_id can be a Driver ObjectId or null
+router.patch('/:id', async (req, res) => {
+  try {
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'driver_id')) {
+      return res.status(400).json({ error: 'driver_id is required (can be null)' });
+    }
+
+    const load = await Load.findById(req.params.id);
+    if (!load) {
+      return res.status(404).json({ error: 'Load not found' });
+    }
+
+    const oldDriverId = load.driver_id;
+    const newDriverId = req.body.driver_id === null ? null : req.body.driver_id;
+
+    load.driver_id = newDriverId;
+    await load.save();
+
+    // Re-check conflicts if driver changed
+    if (load.driver_id?.toString() !== oldDriverId?.toString()) {
       if (load.pickup_date && load.delivery_date) {
         await checkAndUpdateConflicts(
           load._id,

@@ -29,9 +29,27 @@ const ListPage = () => {
     }
   };
 
-  const handleLoadUpdate = (updatedLoad) => {
-    // Refresh data after update
-    loadData();
+  const handleLoadUpdate = (updatedLoad, options = {}) => {
+    // For most updates we refresh to re-group/re-sort.
+    // For driver assignment we keep the row in place until user refreshes.
+    if (options.refresh) {
+      loadData();
+      return;
+    }
+
+    setGroups((prevGroups) => {
+      if (!updatedLoad?._id) return prevGroups;
+
+      return prevGroups.map((group) => {
+        if (!group?.loads) return group;
+        const idx = group.loads.findIndex((l) => l._id === updatedLoad._id);
+        if (idx === -1) return group;
+
+        const nextLoads = [...group.loads];
+        nextLoads[idx] = updatedLoad;
+        return { ...group, loads: nextLoads };
+      });
+    });
   };
 
   const handleLoadDelete = async (loadId) => {

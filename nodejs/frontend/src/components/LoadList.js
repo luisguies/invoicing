@@ -1,8 +1,29 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import LoadItem from './LoadItem';
+import { getDriversByCarrier } from '../services/api';
 import './LoadList.css';
 
 const LoadList = ({ groups, onLoadUpdate, onLoadDelete }) => {
+  const [driversByCarrier, setDriversByCarrier] = useState({});
+  const [driversLoadingByCarrier, setDriversLoadingByCarrier] = useState({});
+
+  const ensureDriversLoaded = useCallback(async (carrierId) => {
+    if (!carrierId) return;
+    if (driversByCarrier[carrierId] || driversLoadingByCarrier[carrierId]) return;
+
+    setDriversLoadingByCarrier((prev) => ({ ...prev, [carrierId]: true }));
+    try {
+      const drivers = await getDriversByCarrier(carrierId);
+      setDriversByCarrier((prev) => ({ ...prev, [carrierId]: Array.isArray(drivers) ? drivers : [] }));
+    } catch (error) {
+      // Don't block rendering; fall back to UNASSIGNED
+      console.error('Failed to load drivers for carrier:', carrierId, error);
+      setDriversByCarrier((prev) => ({ ...prev, [carrierId]: [] }));
+    } finally {
+      setDriversLoadingByCarrier((prev) => ({ ...prev, [carrierId]: false }));
+    }
+  }, [driversByCarrier, driversLoadingByCarrier]);
+
   if (!groups || groups.length === 0) {
     return <p className="no-loads">No loads found.</p>;
   }
@@ -26,6 +47,7 @@ const LoadList = ({ groups, onLoadUpdate, onLoadDelete }) => {
                 <th>Origin</th>
                 <th>Destination</th>
                 <th>Amount</th>
+                <th>Driver</th>
                 <th>Carrier</th>
                 <th>Actions</th>
               </tr>
@@ -37,6 +59,9 @@ const LoadList = ({ groups, onLoadUpdate, onLoadDelete }) => {
                   load={load}
                   onUpdate={onLoadUpdate}
                   onDelete={onLoadDelete}
+                  drivers={group?.carrier?._id ? driversByCarrier[group.carrier._id] : []}
+                  driversLoading={group?.carrier?._id ? !!driversLoadingByCarrier[group.carrier._id] : false}
+                  ensureDriversLoaded={ensureDriversLoaded}
                 />
               ))}
             </tbody>

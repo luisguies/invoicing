@@ -11,6 +11,7 @@ from typing import Dict, Optional, List
 import base64
 from io import BytesIO
 import pdfplumber
+from pathlib import Path
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -48,6 +49,62 @@ RATE_CON_SCHEMA = {
         "warnings": {"type": "array", "items": {"type": "string"}}
     }
 }
+
+def extract_json_from_response(response):
+    """
+    Extract a JSON object from an OpenAI Responses API response (typed SDK objects).
+    """
+    # 0) If the SDK successfully parsed it, use it.
+    if getattr(response, "output_parsed", None):
+        return response.output_parsed
+
+    # 1) Prefer output_text if present
+    out_text = getattr(response, "output_text", None)
+    if out_text and isinstance(out_text, str):
+        candidate = out_text.strip()
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(candidate[start:end+1])
+            except Exception:
+                pass  # fall through to deeper extraction
+
+    # 2) Fall back: walk typed output objects and collect output_text blocks
+    texts = []
+    for item in getattr(response, "output", []) or []:
+        item_type = getattr(item, "type", None)
+
+        # Some SDK items store text directly
+        if item_type == "output_text":
+            t = getattr(item, "text", None)
+            if t:
+                texts.append(t)
+
+        # Some store content list (messages)
+        content = getattr(item, "content", None)
+        if content:
+            for c in content:
+                if getattr(c, "type", None) == "output_text":
+                    t = getattr(c, "text", None)
+                    if t:
+                        texts.append(t)
+
+    combined = "\n".join(texts).strip()
+    if not combined:
+        return None
+
+    start = combined.find("{")
+    end = combined.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+
+    try:
+        return json.loads(combined[start:end+1])
+    except Exception:
+        return None
+
+
 
 
 def pdf_to_images(pdf_path: str) -> List:
@@ -160,6 +217,150 @@ def get_safe_default() -> Dict:
     }
 
 
+def is_extraction_failed(data: Dict) -> bool:
+    """
+    Check if extraction failed - meaning we got a safe default or insufficient data.
+    
+    Args:
+        data: Extracted data in legacy format
+        
+    Returns:
+        True if extraction failed, False if we have useful data
+    """
+    if not data:
+        return True
+
+    # In the Node upload route, pickup_date + delivery_date are required to create a load.
+    # Treat missing dates as extraction failure so we can run fallbacks.
+    has_pickup_date = data.get("pickup_date") not in (None, "", "NOT_FOUND")
+    has_delivery_date = data.get("delivery_date") not in (None, "", "NOT_FOUND")
+    return not (has_pickup_date and has_delivery_date)
+
+
+def _gemini_json_to_legacy(extracted_json: Dict, warnings_prefix: str) -> Dict:
+    """
+    Convert Gemini extracted JSON (from gemini_extract_key_fields.py) into our legacy dict.
+    """
+    def parse_date(date_str: str) -> Optional[str]:
+        """Convert MM/DD/YYYY to YYYY-MM-DD"""
+        if not date_str or date_str == "NOT_FOUND":
+            return None
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(date_str, "%m/%d/%Y")
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            return None
+
+    def parse_location(loc_str: str) -> tuple:
+        """Parse 'City, State' into (city, state)"""
+        if not loc_str or loc_str == "NOT_FOUND":
+            return (None, None)
+        try:
+            parts = loc_str.split(",")
+            if len(parts) >= 2:
+                city = parts[0].strip()
+                state = parts[1].strip()
+                return (city, state)
+        except Exception:
+            pass
+        return (None, None)
+
+    origin_city, origin_state = parse_location(extracted_json.get("origin", "NOT_FOUND"))
+    dest_city, dest_state = parse_location(extracted_json.get("destination", "NOT_FOUND"))
+
+    legacy_data = {
+        "carrier_name": extracted_json.get("company_name") if extracted_json.get("company_name") != "NOT_FOUND" else None,
+        "driver_name": extracted_json.get("driver_name") if extracted_json.get("driver_name") != "NOT_FOUND" else None,
+        "load_number": extracted_json.get("reference_number") if extracted_json.get("reference_number") != "NOT_FOUND" else None,
+        "carrier_pay": extracted_json.get("amount") if extracted_json.get("amount") != "NOT_FOUND" else None,
+        "pickup_date": parse_date(extracted_json.get("pickup_date", "NOT_FOUND")),
+        "delivery_date": parse_date(extracted_json.get("delivery_date", "NOT_FOUND")),
+        "pickup_city": origin_city,
+        "pickup_state": origin_state,
+        "delivery_city": dest_city,
+        "delivery_state": dest_state,
+        "needs_review": False,
+        "warnings": [warnings_prefix],
+    }
+    return legacy_data
+
+
+def extract_with_gemini(raw_text: str) -> Optional[Dict]:
+    """
+    Fallback: Use python/gemini_extract_key_fields.py to extract structured fields from raw_text.
+    """
+    try:
+        import gemini_extract_key_fields as gekf
+
+        model = gekf.setup_gemini()
+        if not model:
+            return None
+
+        extracted = gekf.extract_data_with_gemini(model, raw_text)
+        if not extracted or not isinstance(extracted, dict):
+            return None
+
+        return _gemini_json_to_legacy(extracted, "Extracted using gemini_extract_key_fields fallback")
+
+    except ImportError as e:
+        print(f"Gemini fallback import error: {e}")
+        return None
+    except Exception as e:
+        print(f"Error in Gemini fallback: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def extract_with_google_vision(pdf_path: str) -> Optional[Dict]:
+    """
+    Fallback 1: Use python/google_vision_pipeline.py to OCR the PDF (Google Vision),
+    then python/gemini_extract_key_fields.py to extract fields from the OCR text.
+    
+    Args:
+        pdf_path: Path to PDF file
+        
+    Returns:
+        Dictionary in legacy format, or None if extraction fails
+    """
+    try:
+        from pathlib import Path
+        from google.cloud import vision
+        import google_vision_pipeline as gvp
+
+        # If GOOGLE_APPLICATION_CREDENTIALS isn't set, auto-detect a key in ./keys/
+        # (compose mounts ./python -> /app, so keys usually live at /app/keys/*.json)
+        if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            keys_dir = Path(__file__).parent / "keys"
+            if keys_dir.exists():
+                json_files = sorted(keys_dir.glob("*.json"))
+                if json_files:
+                    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(json_files[0])
+                    print(f"Using Google credentials from: {os.environ['GOOGLE_APPLICATION_CREDENTIALS']}")
+
+        client = vision.ImageAnnotatorClient()
+        raw_text = gvp.process_pdf_with_vision(Path(pdf_path), client)
+        if not raw_text or not raw_text.strip():
+            return None
+
+        legacy = extract_with_gemini(raw_text)
+        if legacy and isinstance(legacy, dict):
+            # annotate source
+            legacy.setdefault("warnings", [])
+            legacy["warnings"].append("OCR_text_source=google_vision_pipeline")
+        return legacy
+
+    except ImportError as e:
+        print(f"Google Vision fallback import error: {e}")
+        return None
+    except Exception as e:
+        print(f"Error in Google Vision + Gemini fallback: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 def convert_to_legacy_format(data: Dict) -> Dict:
     """
     Convert the new schema format to the legacy format expected by the rest of the system.
@@ -197,74 +398,58 @@ def convert_to_legacy_format(data: Dict) -> Dict:
 
 
 def extract_load_data_from_text(text: str) -> Dict:
-    """
-    Use OpenAI Responses API to extract load data from PDF text.
-    
-    Args:
-        text: Extracted text from PDF
-        
-    Returns:
-        Dictionary with extracted load data (always returns a valid dict)
-    """
     try:
-        # Prepare the prompt for extraction
         prompt = """Extract the following information from this rate confirmation/load document text:
-- carrier: The name of the carrier
-- load_number: The load number or reference
-- pickup: First pickup location (city, state) and date (YYYY-MM-DD)
-- delivery: Final delivery location (city, state) and date (YYYY-MM-DD)
-- rate_total: The total rate or carrier pay amount (as a number)
-- needs_review: Set to true if the document is unclear or data seems incorrect
-- warnings: Array of any warnings or issues found (e.g., "Multiple pickups found, using first", "Date format unclear")
+        - carrier: The name of the carrier
+        - load_number: The load number or reference
+        - pickup: First pickup location (city, state) and date (YYYY-MM-DD)
+        - delivery: Final delivery location (city, state) and date (YYYY-MM-DD)
+        - rate_total: The total rate or carrier pay amount (as a number)
+        - needs_review: Set to true if the document is unclear or data seems incorrect
+        - warnings: Array of any warnings or issues found (e.g., "Multiple pickups found, using first", "Date format unclear")
 
-If there are multiple pickups, use only the FIRST pickup date and location.
-If there are multiple deliveries, use only the FINAL delivery date and location.
+        If there are multiple pickups, use only the FIRST pickup date and location.
+        If there are multiple deliveries, use only the FINAL delivery date and location.
 
-Document text:
-""" + text[:8000]  # Limit text to avoid token limits
+        Document text:
+        """ + text[:8000]
 
-        # Get model from environment variable, default to gpt-5-mini
-        model = os.getenv('OPENAI_MODEL', 'gpt-5-mini')
-        
-        # Validate API key
-        if not os.getenv('OPENAI_API_KEY'):
+        model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+        if not os.getenv("OPENAI_API_KEY"):
             print("Warning: OPENAI_API_KEY environment variable is not set")
             return get_safe_default()
-        
-        # Call OpenAI Responses API with structured outputs
+
         print(f"Calling OpenAI Responses API with model: {model} (structured outputs)")
-        
-        try:
-            response = client.responses.create(
-                model=model,
-                input=prompt,
-                text={
+
+        response = client.responses.create(
+            model=model,
+            # Force actual text output
+            modalities=["text"],
+            input=[{
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                ],
+            }],
+            text={
                 "format": {
                     "type": "json_schema",
                     "name": "ratecon_extract",
-                    "json_schema": {
-                        "strict": True,
-                        "schema": RATE_CON_SCHEMA
-                    }
+                    "schema": RATE_CON_SCHEMA,
+                    "strict": False,  # IMPORTANT: don’t brick on minor schema drift
                 }
             },
-            max_output_tokens=500
-            )
-            
-            # Read output ONLY from response.output_parsed
-            if hasattr(response, 'output_parsed') and response.output_parsed:
-                print("Successfully extracted structured output from OpenAI Responses API")
-                return convert_to_legacy_format(response.output_parsed)
-            else:
-                print("Warning: response.output_parsed is empty or missing")
-                return get_safe_default()
-                
-        except Exception as api_error:
-            print(f"OpenAI Responses API call failed: {str(api_error)}")
-            import traceback
-            traceback.print_exc()
-            return get_safe_default()
-            
+            max_output_tokens=700,
+        )
+
+        data = extract_json_from_response(response)
+        if data:
+            return convert_to_legacy_format(data)
+
+        print("No usable OCR output; returning safe default")
+        return get_safe_default()
+
+
     except Exception as e:
         print(f"Error extracting data from text: {str(e)}")
         import traceback
@@ -273,87 +458,64 @@ Document text:
 
 
 def extract_load_data_from_image(image) -> Dict:
-    """
-    Use OpenAI Responses API to extract load data from a PDF page image.
-    
-    Args:
-        image: PIL Image object
-        
-    Returns:
-        Dictionary with extracted load data (always returns a valid dict)
-    """
     try:
-        # Convert image to base64
         base64_image = image_to_base64(image)
-        
-        # Prepare the prompt for extraction
+
         prompt = """Extract the following information from this rate confirmation/load document:
-- carrier: The name of the carrier
-- load_number: The load number or reference
-- pickup: First pickup location (city, state) and date (YYYY-MM-DD)
-- delivery: Final delivery location (city, state) and date (YYYY-MM-DD)
-- rate_total: The total rate or carrier pay amount (as a number)
-- needs_review: Set to true if the document is unclear or data seems incorrect
-- warnings: Array of any warnings or issues found (e.g., "Multiple pickups found, using first", "Date format unclear")
+- carrier
+- load_number
+- pickup: {city, state, date}
+- delivery: {city, state, date}
+- rate_total
+- needs_review
+- warnings
 
-If there are multiple pickups, use only the FIRST pickup date and location.
-If there are multiple deliveries, use only the FINAL delivery date and location."""
+Use FIRST pickup and FINAL delivery if multiple stops exist.
+Return JSON only.
+"""
 
-        # Get model from environment variable, default to gpt-5-mini
-        model = os.getenv('OPENAI_MODEL', 'gpt-5-mini')
-        
-        # Validate API key
-        if not os.getenv('OPENAI_API_KEY'):
-            print("Warning: OPENAI_API_KEY environment variable is not set")
+        model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+        if not os.getenv("OPENAI_API_KEY"):
+            print("OPENAI_API_KEY not set")
             return get_safe_default()
-        
-        # Call OpenAI Responses API with structured outputs and multimodal input
-        print(f"Calling OpenAI Responses API with model: {model} (structured outputs, multimodal)")
-        
-        try:
-            response = client.responses.create(
-                model=model,
-                input=[
-                    {
-                        "type": "input_text",
-                        "text": prompt
-                    },
+
+        image_url = f"data:image/png;base64,{base64_image}"
+
+        # Some OpenAI SDK versions don't support the `modalities` argument.
+        # We'll avoid it for compatibility.
+        response = client.responses.create(
+            model=model,
+            input=[{
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
                     {
                         "type": "input_image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/png",
-                            "data": base64_image
-                        }
-                    }
+                        "image_url": {"url": image_url},
+                    },
                 ],
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "ratecon_extract",
-                        "json_schema": {
-                            "strict": True,
-                            "schema": RATE_CON_SCHEMA
-                        }
-                    }
-                },
-                max_output_tokens=500
-            )
-            
-            # Read output ONLY from response.output_parsed
-            if hasattr(response, 'output_parsed') and response.output_parsed:
-                print("Successfully extracted structured output from OpenAI Responses API")
-                return convert_to_legacy_format(response.output_parsed)
-            else:
-                print("Warning: response.output_parsed is empty or missing")
-                return get_safe_default()
-                
-        except Exception as api_error:
-            print(f"OpenAI Responses API call failed: {str(api_error)}")
-            import traceback
-            traceback.print_exc()
-            return get_safe_default()
-            
+            }],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "ratecon_extract",
+                    "schema": RATE_CON_SCHEMA,
+                    "strict": False,
+                }
+            },
+            max_output_tokens=2000,
+        )
+
+        data = extract_json_from_response(response)
+        if data:
+            return convert_to_legacy_format(data)
+
+        print("OpenAI image OCR returned no usable JSON")
+        print("DEBUG output_text:", getattr(response, "output_text", None))
+        print("DEBUG output item types:", [getattr(x, "type", None) for x in getattr(response, "output", []) or []])
+        return get_safe_default()
+
+
     except Exception as e:
         print(f"Error extracting data from image: {str(e)}")
         import traceback
@@ -361,58 +523,135 @@ If there are multiple deliveries, use only the FINAL delivery date and location.
         return get_safe_default()
 
 
+
 def process_pdf(pdf_path: str) -> Dict:
     """
     Process a PDF file and extract load data.
-    First tries text extraction, then falls back to OCR if needed.
-    
-    Args:
-        pdf_path: Path to the PDF file
-        
-    Returns:
-        Dictionary with extracted load data (always returns a valid dict)
+    Tries text extraction first, then OCRs multiple pages.
+    Falls back to Google Vision + Gemini if OpenAI fails.
+    Returns LEGACY format (carrier_name, pickup_date, delivery_date, etc).
     """
     try:
-        # Validate file exists
         if not os.path.exists(pdf_path):
             raise Exception(f"PDF file not found: {pdf_path}")
-        
-        print(f"Processing PDF: {pdf_path}")
-        
-        # Step 1: Try to extract text from PDF
+
         print("Attempting text extraction...")
         extracted_text = extract_text_from_pdf(pdf_path)
-        
-        # Step 2: Check if PDF is text-based
+
         if extracted_text and is_text_based_pdf(extracted_text):
-            print("PDF appears to be text-based. Using text extraction...")
-            extracted_data = extract_load_data_from_text(extracted_text)
-            print(f"Successfully extracted data from text: {list(extracted_data.keys())}")
-            return extracted_data
+            print("PDF appears text-based. Extracting from text...")
+            # This returns legacy format
+            openai_result = extract_load_data_from_text(extracted_text)
+            
+            # Check if OpenAI extraction failed
+            if not is_extraction_failed(openai_result):
+                return openai_result
+            else:
+                print("OpenAI extraction failed, trying fallbacks...")
         else:
-            print("PDF appears to be image-based or text extraction failed. Using OCR...")
+            print("Converting PDF to images for OCR...")
+            images = pdf_to_images(pdf_path)
+
+            if not images:
+                print("No pages found in PDF")
+                # Try fallbacks even if no images
+                openai_result = get_safe_default()
+            else:
+                def score_legacy(d: Dict) -> int:
+                    s = 0
+                    if d.get("carrier_name"): s += 1
+                    if d.get("load_number"): s += 1
+                    if d.get("carrier_pay") not in (None, "", 0): s += 1
+                    if d.get("pickup_date"): s += 3
+                    if d.get("delivery_date"): s += 3
+                    if d.get("pickup_city"): s += 1
+                    if d.get("delivery_city"): s += 1
+                    return s
+
+                best = None
+                best_score = -1
+
+                print(f"OCR processing {len(images)} page(s)...")
+
+                for i, img in enumerate(images):
+                    print(f"OCR page {i + 1}/{len(images)}")
+                    data = extract_load_data_from_image(img)  # legacy dict
+
+                    # tag which page produced it
+                    if data.get("warnings") is None:
+                        data["warnings"] = []
+                    data["warnings"].append(f"OCR_used_page={i + 1}")
+
+                    s = score_legacy(data)
+                    if s > best_score:
+                        best = data
+                        best_score = s
+
+                    # Early exit: once both dates are present
+                    if data.get("pickup_date") and data.get("delivery_date"):
+                        print(f"Found pickup+delivery on page {i + 1}; stopping early.")
+                        best = data
+                        break
+
+                openai_result = best if best else get_safe_default()
         
-        # Step 3: Fall back to image-based OCR
-        print("Converting PDF to images for OCR...")
-        images = pdf_to_images(pdf_path)
+        # Check if OpenAI extraction failed, then try fallbacks
+        print(f"Checking if extraction failed... OpenAI result: needs_review={openai_result.get('needs_review')}, has_pickup={bool(openai_result.get('pickup_date'))}, has_delivery={bool(openai_result.get('delivery_date'))}, has_carrier={bool(openai_result.get('carrier_name'))}")
         
-        if not images:
-            print("Warning: No pages found in PDF")
-            return get_safe_default()
-        
-        print(f"PDF converted to {len(images)} page(s). Processing first page with OCR...")
-        
-        # Process the first page with OCR
-        extracted_data = extract_load_data_from_image(images[0])
-        print(f"Successfully extracted data from image: {list(extracted_data.keys())}")
-        
-        return extracted_data
-        
+        if is_extraction_failed(openai_result):
+            print("OpenAI extraction failed or insufficient data. Trying fallback 1: Google Vision + Gemini...")
+            
+            # Fallback 1: Google Vision + Gemini
+            try:
+                google_vision_result = extract_with_google_vision(pdf_path)
+                if google_vision_result and not is_extraction_failed(google_vision_result):
+                    print("Google Vision + Gemini fallback succeeded!")
+                    return google_vision_result
+                else:
+                    print(f"Google Vision + Gemini fallback failed. Result: {google_vision_result}")
+            except Exception as e:
+                print(f"Google Vision + Gemini fallback error: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Fallback 2: Gemini only (if we have raw text)
+            print("Trying fallback 2: Gemini only...")
+            if extracted_text:
+                try:
+                    gemini_result = extract_with_gemini(extracted_text)
+                    if gemini_result and not is_extraction_failed(gemini_result):
+                        print("Gemini fallback succeeded!")
+                        return gemini_result
+                    else:
+                        print(f"Gemini fallback failed. Result: {gemini_result}")
+                except Exception as e:
+                    print(f"Gemini fallback error: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print("No extracted text available for Gemini fallback. Trying to extract text from PDF for Gemini...")
+                # Try to extract text again for Gemini fallback
+                try:
+                    fallback_text = extract_text_from_pdf(pdf_path)
+                    if fallback_text:
+                        gemini_result = extract_with_gemini(fallback_text)
+                        if gemini_result and not is_extraction_failed(gemini_result):
+                            print("Gemini fallback (with re-extracted text) succeeded!")
+                            return gemini_result
+                except Exception as e:
+                    print(f"Gemini fallback (with re-extracted text) error: {e}")
+            
+            print("All fallbacks failed. Returning OpenAI result (may need review).")
+            return openai_result
+        else:
+            return openai_result
+
     except Exception as e:
-        print(f"Error processing PDF: {str(e)}")
+        print(f"Error processing PDF: {e}")
         import traceback
         traceback.print_exc()
         return get_safe_default()
+
 
 
 if __name__ == "__main__":

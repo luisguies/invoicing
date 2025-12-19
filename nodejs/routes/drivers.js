@@ -2,10 +2,19 @@ const express = require('express');
 const router = express.Router();
 const { Driver, Carrier } = require('../db/database');
 
-// Get all drivers
+// Get all drivers (optionally filtered by carrier)
 router.get('/', async (req, res) => {
   try {
-    const drivers = await Driver.find().populate('carrier_id', 'name aliases');
+    const { carrier_id } = req.query;
+
+    const query = {};
+    if (carrier_id) {
+      query.carrier_id = carrier_id;
+    }
+
+    const drivers = await Driver.find(query)
+      .populate('carrier_id', 'name aliases')
+      .sort({ name: 1 });
     res.json(drivers);
   } catch (error) {
     res.status(500).json({ error: error.message });
