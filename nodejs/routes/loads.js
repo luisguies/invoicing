@@ -6,6 +6,7 @@ const { recalculateDriverConflictsForDriver, checkAndUpdateDriverConflictsForLoa
 const { recalculateDuplicateConflictsForCarrierLoadNumber, checkAndUpdateDuplicateConflictsForLoad } = require('../services/duplicateLoadConflictService');
 const { refreshConflictsForLoads } = require('../services/conflictRefreshService');
 const { createCarrierAlias } = require('../services/carrierResolutionService');
+const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
 
 function safeLower(s) {
   return (s || '').toString().toLowerCase();
@@ -197,6 +198,15 @@ router.get('/:id/conflicts', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const loadData = req.body;
+
+    // Auto-assign invoice fields if we have both dates.
+    if (loadData?.pickup_date && loadData?.delivery_date) {
+      const invoiceFields = computeInvoiceWeekFields(loadData.pickup_date, loadData.delivery_date);
+      if (invoiceFields) {
+        loadData.invoice_monday = invoiceFields.invoiceMonday;
+        loadData.invoice_week_id = invoiceFields.invoiceWeekId;
+      }
+    }
     
     const load = new Load(loadData);
     await load.save();
@@ -272,6 +282,15 @@ router.put('/:id', async (req, res) => {
 
     // Update load
     Object.assign(load, req.body);
+
+    // Auto-recompute invoice fields if we have both dates after update.
+    if (load.pickup_date && load.delivery_date) {
+      const invoiceFields = computeInvoiceWeekFields(load.pickup_date, load.delivery_date);
+      if (invoiceFields) {
+        load.invoice_monday = invoiceFields.invoiceMonday;
+        load.invoice_week_id = invoiceFields.invoiceWeekId;
+      }
+    }
     await load.save();
 
     // Re-check conflicts if dates or driver changed

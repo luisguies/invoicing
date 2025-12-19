@@ -96,7 +96,10 @@ const ListPage = () => {
       const result = await generateInvoice(invoiceData);
 
       if (result.success) {
-        alert('Invoice generated successfully!');
+        const count = typeof result.count === 'number'
+          ? result.count
+          : (Array.isArray(result.invoices) ? result.invoices.length : 1);
+        alert(count === 1 ? 'Invoice generated successfully!' : `Generated ${count} invoices successfully!`);
         navigate('/print');
       }
     } catch (error) {

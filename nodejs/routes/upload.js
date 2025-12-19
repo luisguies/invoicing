@@ -10,6 +10,7 @@ const { checkAndUpdateConflicts } = require('../services/loadConflictService');
 const { recalculateDriverConflictsForDriver, checkAndUpdateDriverConflictsForLoad } = require('../services/driverConflictService');
 const { recalculateDuplicateConflictsForCarrierLoadNumber, checkAndUpdateDuplicateConflictsForLoad } = require('../services/duplicateLoadConflictService');
 const { Load } = require('../db/database');
+const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -101,6 +102,11 @@ router.post('/', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Pickup and delivery dates are required' });
     }
 
+    const invoiceFields = computeInvoiceWeekFields(pickupDate, deliveryDate);
+    if (!invoiceFields) {
+      return res.status(400).json({ error: 'Invalid pickup_date or delivery_date' });
+    }
+
     // Create load
     const load = new Load({
       carrier_id: carrier_id,
@@ -113,6 +119,8 @@ router.post('/', upload.single('file'), async (req, res) => {
       carrier_pay: parseFloat(ocrData.carrier_pay) || 0,
       pickup_date: pickupDate,
       delivery_date: deliveryDate,
+      invoice_monday: invoiceFields.invoiceMonday,
+      invoice_week_id: invoiceFields.invoiceWeekId,
       pickup_city: ocrData.pickup_city || '',
       pickup_state: ocrData.pickup_state || '',
       delivery_city: ocrData.delivery_city || '',

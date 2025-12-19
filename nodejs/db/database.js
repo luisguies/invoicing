@@ -58,6 +58,21 @@ const loadSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  // Auto-assigned invoice week fields (derived from pickup_date + delivery_date)
+  // invoice_monday is stored as UTC midnight datetime.
+  invoice_monday: {
+    type: Date,
+    required: false,
+    default: null,
+    index: true
+  },
+  // invoice_week_id is YYYY-MM-DD (same date as invoice_monday, UTC).
+  invoice_week_id: {
+    type: String,
+    required: false,
+    default: null,
+    index: true
+  },
   pickup_city: {
     type: String,
     required: true

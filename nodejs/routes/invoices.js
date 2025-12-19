@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Invoice, Load, InvoiceRule } = require('../db/database');
 const { generateInvoicePDF } = require('../services/pdfService');
+const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
 const fs = require('fs');
 const path = require('path');
 
@@ -124,45 +125,141 @@ router.post('/generate', async (req, res) => {
       return res.status(400).json({ error: 'No valid loads found for invoice generation' });
     }
 
-    // Generate invoice number
-    const invoiceNumber = invoiceData?.invoiceNumber || `INV-${Date.now()}`;
+    // Split by carrier + invoice week so clicking "Generate Invoices" is automatic and safe.
+    // The PDF generation assumes a single carrier for bill-to details.
+    const loadsForGrouping = await Load.find({
+      _id: { $in: loadIdsToUse },
+      cancelled: false
+    }).select('_id carrier_id pickup_date delivery_date invoice_monday invoice_week_id');
 
-    // Generate PDF
-    const result = await generateInvoicePDF(loadIdsToUse, {
-      ...invoiceData,
-      invoiceNumber
-    });
+    const missingCarrier = loadsForGrouping.filter(l => !l.carrier_id).map(l => l._id);
+    if (missingCarrier.length > 0) {
+      return res.status(400).json({
+        error: 'Some loads are missing carrier assignment. Assign a carrier before generating invoices.',
+        missing_carrier_load_ids: missingCarrier
+      });
+    }
 
-    const pdfPath = result.pdfPath;
-    const fullInvoiceData = result.invoiceData;
+    // Auto-compute/backfill invoice fields for these loads (no Mongo date math).
+    const invoiceFieldUpdates = [];
+    const computedByLoadId = new Map(); // loadIdStr -> { invoiceMonday, invoiceWeekId }
 
-    // Create invoice record with full data snapshot
-    const invoice = new Invoice({
-      invoice_number: invoiceNumber,
-      load_ids: loadIdsToUse,
-      pdf_path: pdfPath,
-      invoiceDate: fullInvoiceData.invoiceDate,
-      dueDate: fullInvoiceData.dueDate,
-      billTo: fullInvoiceData.billTo,
-      payableTo: fullInvoiceData.payableTo,
-      subtotal: fullInvoiceData.subtotal,
-      postage: fullInvoiceData.postage,
-      total: fullInvoiceData.total,
-      balanceDue: fullInvoiceData.balanceDue,
-      cta: fullInvoiceData.cta,
-      paymentLine: fullInvoiceData.paymentLine,
-      groups: fullInvoiceData.groups
-    });
+    for (const l of loadsForGrouping) {
+      if (!l.pickup_date || !l.delivery_date) {
+        return res.status(400).json({
+          error: 'Some loads are missing pickup_date or delivery_date; cannot generate invoices.'
+        });
+      }
 
-    await invoice.save();
+      const computed = computeInvoiceWeekFields(l.pickup_date, l.delivery_date);
+      if (!computed) {
+        return res.status(400).json({
+          error: 'Some loads have invalid pickup_date or delivery_date; cannot generate invoices.'
+        });
+      }
 
-    const populatedInvoice = await Invoice.findById(invoice._id)
-      .populate('load_ids', 'load_number pickup_date delivery_date carrier_pay');
+      computedByLoadId.set(l._id.toString(), computed);
+
+      const existingMondayMs = l.invoice_monday ? new Date(l.invoice_monday).getTime() : null;
+      const computedMondayMs = computed.invoiceMonday.getTime();
+      const existingWeekId = l.invoice_week_id || null;
+
+      const needsUpdate =
+        existingMondayMs !== computedMondayMs ||
+        existingWeekId !== computed.invoiceWeekId;
+
+      if (needsUpdate) {
+        invoiceFieldUpdates.push({
+          updateOne: {
+            filter: { _id: l._id },
+            update: {
+              $set: {
+                invoice_monday: computed.invoiceMonday,
+                invoice_week_id: computed.invoiceWeekId
+              }
+            }
+          }
+        });
+      }
+    }
+
+    if (invoiceFieldUpdates.length > 0) {
+      await Load.bulkWrite(invoiceFieldUpdates, { ordered: false });
+    }
+
+    const byCarrierAndWeek = new Map(); // `${carrierIdStr}|${invoiceWeekId}` -> loadId[]
+    for (const l of loadsForGrouping) {
+      const carrierIdStr = l.carrier_id.toString();
+      const computed = computedByLoadId.get(l._id.toString());
+      const invoiceWeekId = computed ? computed.invoiceWeekId : (l.invoice_week_id || null);
+      if (!invoiceWeekId) {
+        return res.status(400).json({
+          error: 'Unable to determine invoice week for one or more loads.'
+        });
+      }
+
+      const key = `${carrierIdStr}|${invoiceWeekId}`;
+      if (!byCarrierAndWeek.has(key)) byCarrierAndWeek.set(key, []);
+      byCarrierAndWeek.get(key).push(l._id);
+    }
+
+    const baseInvoiceNumber = invoiceData?.invoiceNumber || `INV-${Date.now()}`;
+    const groupKeys = Array.from(byCarrierAndWeek.keys()).sort();
+
+    const createdInvoices = [];
+    for (let i = 0; i < groupKeys.length; i += 1) {
+      const key = groupKeys[i];
+      const loadIds = byCarrierAndWeek.get(key) || [];
+      if (loadIds.length === 0) continue;
+
+      const parts = key.split('|');
+      const invoiceWeekId = parts[1] || '';
+      const weekCompact = invoiceWeekId ? invoiceWeekId.replace(/-/g, '') : 'unknownweek';
+
+      // Ensure uniqueness if we end up creating multiple invoices in one request.
+      const invoiceNumber =
+        groupKeys.length === 1
+          ? baseInvoiceNumber
+          : `${baseInvoiceNumber}-${weekCompact}-${String(i + 1).padStart(2, '0')}`;
+
+      const result = await generateInvoicePDF(loadIds, {
+        ...(invoiceData || {}),
+        invoiceNumber
+      });
+
+      const pdfPath = result.pdfPath;
+      const fullInvoiceData = result.invoiceData;
+
+      const invoice = new Invoice({
+        invoice_number: invoiceNumber,
+        load_ids: loadIds,
+        pdf_path: pdfPath,
+        invoiceDate: fullInvoiceData.invoiceDate,
+        dueDate: fullInvoiceData.dueDate,
+        billTo: fullInvoiceData.billTo,
+        payableTo: fullInvoiceData.payableTo,
+        subtotal: fullInvoiceData.subtotal,
+        postage: fullInvoiceData.postage,
+        total: fullInvoiceData.total,
+        balanceDue: fullInvoiceData.balanceDue,
+        cta: fullInvoiceData.cta,
+        paymentLine: fullInvoiceData.paymentLine,
+        groups: fullInvoiceData.groups
+      });
+
+      await invoice.save();
+      createdInvoices.push(invoice);
+    }
+
+    const populatedInvoices = await Invoice.find({ _id: { $in: createdInvoices.map(i => i._id) } })
+      .populate('load_ids', 'load_number pickup_date delivery_date carrier_pay')
+      .sort({ generated_at: -1 });
 
     res.status(201).json({
       success: true,
-      invoice: populatedInvoice,
-      message: 'Invoice generated successfully'
+      invoices: populatedInvoices,
+      count: populatedInvoices.length,
+      message: populatedInvoices.length === 1 ? 'Invoice generated successfully' : 'Invoices generated successfully'
     });
 
   } catch (error) {
