@@ -7,6 +7,8 @@ const { processPDFBuffer } = require('../services/ocrService');
 const { findOrCreateDriver } = require('../services/carrierDriverService');
 const { resolveCarrier } = require('../services/carrierResolutionService');
 const { checkAndUpdateConflicts } = require('../services/loadConflictService');
+const { recalculateDriverConflictsForDriver, checkAndUpdateDriverConflictsForLoad } = require('../services/driverConflictService');
+const { recalculateDuplicateConflictsForCarrierLoadNumber, checkAndUpdateDuplicateConflictsForLoad } = require('../services/duplicateLoadConflictService');
 const { Load } = require('../db/database');
 
 // Configure multer for file uploads
@@ -130,11 +132,35 @@ router.post('/', upload.single('file'), async (req, res) => {
       load.driver_id
     );
 
+    // Driver conflicts (informational only)
+    try {
+      if (load.driver_id) {
+        await recalculateDriverConflictsForDriver(load.driver_id);
+      } else {
+        await checkAndUpdateDriverConflictsForLoad(load._id, load.pickup_date, load.delivery_date, null);
+      }
+    } catch (e) {
+      console.error('Driver conflict recalculation failed (upload):', e);
+    }
+
+    // Duplicate load number conflicts (informational only)
+    try {
+      if (load.carrier_id && load.load_number) {
+        await recalculateDuplicateConflictsForCarrierLoadNumber(load.carrier_id, load.load_number);
+      } else {
+        await checkAndUpdateDuplicateConflictsForLoad(load._id, load.carrier_id, load.load_number);
+      }
+    } catch (e) {
+      console.error('Duplicate conflict recalculation failed (upload):', e);
+    }
+
     // Populate and return
     const populatedLoad = await Load.findById(load._id)
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
-      .populate('date_conflict_ids', 'load_number pickup_date delivery_date');
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('duplicate_conflict_ids', 'load_number pickup_date delivery_date');
 
     res.status(201).json({
       success: true,

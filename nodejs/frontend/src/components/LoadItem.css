@@ -12,6 +12,34 @@
   color: #999;
 }
 
+.load-item.driver-conflict {
+  background-color: #fff3cd;
+}
+
+.load-item.driver-conflict:hover {
+  background-color: #ffe8a1;
+}
+
+.load-item.driver-conflict .warning-icon {
+  color: #b45309;
+}
+
+.load-item.duplicate-conflict {
+  background-color: #e7f1ff;
+}
+
+.load-item.duplicate-conflict:hover {
+  background-color: #dbeafe;
+}
+
+.load-item.driver-conflict.duplicate-conflict {
+  background-color: #f3e8ff;
+}
+
+.load-item.driver-conflict.duplicate-conflict:hover {
+  background-color: #e9d5ff;
+}
+
 .load-item.needs-review {
   background-color: #ffe6e6;
 }

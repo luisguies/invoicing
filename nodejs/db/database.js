@@ -100,6 +100,16 @@ const loadSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Load'
   }],
+  // Duplicate load number conflicts are informational only (never block saving/assignment).
+  // A conflict exists when two (or more) non-cancelled loads share the same carrier_id + load_number.
+  duplicate_conflict: {
+    type: Boolean,
+    default: false
+  },
+  duplicate_conflict_ids: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Load'
+  }],
   created_at: {
     type: Date,
     default: Date.now

@@ -22,6 +22,7 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
   });
 
   const hasDriverConflicts = load.driver_conflict === true;
+  const hasDuplicateConflicts = load.duplicate_conflict === true;
   const needsCarrierReview = !load.carrier_id && load.needs_review;
   const carrierId = load?.carrier_id?._id || null;
 
@@ -36,6 +37,12 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
       return nums.length > 0 ? `Driver conflict with load(s): ${nums.join(', ')}` : 'Driver conflict detected';
     }
     return `Driver conflict with ${ids.length} other load(s)`;
+  })();
+
+  const duplicateConflictDetails = (() => {
+    const ids = load.duplicate_conflict_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return 'Duplicate load number for this carrier';
+    return `Duplicate load number for this carrier (${ids.length + 1} total loads)`;
   })();
 
   const currentDriverId = (() => {
@@ -209,10 +216,13 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
   }
 
   return (
-    <tr className={`load-item ${load.cancelled ? 'cancelled' : ''} ${needsCarrierReview ? 'needs-review' : ''}`}>
+    <tr className={`load-item ${load.cancelled ? 'cancelled' : ''} ${hasDriverConflicts ? 'driver-conflict' : ''} ${hasDuplicateConflicts ? 'duplicate-conflict' : ''} ${needsCarrierReview ? 'needs-review' : ''}`}>
       <td>
         {hasDriverConflicts && (
           <span className="warning-icon" title={driverConflictDetails || 'Driver conflict detected'}>👤⚠️</span>
+        )}
+        {hasDuplicateConflicts && (
+          <span className="warning-icon" title={duplicateConflictDetails}>🔁</span>
         )}
         {needsCarrierReview && (
           <span className="warning-icon" title="Carrier needs review">🔍</span>
