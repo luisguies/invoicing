@@ -4,8 +4,11 @@ import Navigation from './components/Navigation';
 import LoginPage from './pages/LoginPage';
 import UploadPage from './pages/UploadPage';
 import ListPage from './pages/ListPage';
+import CreateLoadPage from './pages/CreateLoadPage';
 import PrintPage from './pages/PrintPage';
 import SettingsPage from './pages/SettingsPage';
+import LoadInvoiceCreatorPage from './pages/LoadInvoiceCreatorPage';
+import InvoicedLoadsPage from './pages/InvoicedLoadsPage';
 import { checkAuth } from './services/api';
 import './App.css';
 
@@ -42,6 +45,9 @@ function App() {
                 <Route path="/" element={<Navigate to="/upload" replace />} />
                 <Route path="/upload" element={<UploadPage />} />
                 <Route path="/list" element={<ListPage />} />
+                <Route path="/loads/new" element={<CreateLoadPage />} />
+                <Route path="/tools/load-invoice-creator" element={<LoadInvoiceCreatorPage />} />
+                <Route path="/invoiced-loads" element={<InvoicedLoadsPage />} />
                 <Route path="/print" element={<PrintPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>

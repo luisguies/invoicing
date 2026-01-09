@@ -4,6 +4,32 @@ const fs = require('fs');
 const path = require('path');
 const { Load, Dispatcher, Settings } = require('../db/database');
 
+function sanitizeFilenameComponent(value) {
+  // Make a filesystem-safe filename component (works well for Windows + Linux).
+  return (value || '')
+    .toString()
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '-') // illegal on Windows (and generally troublesome)
+    .replace(/\s+/g, ' ')
+    .replace(/\.+$/g, '') // avoid trailing dots (Windows)
+    .slice(0, 180); // keep it reasonable
+}
+
+function uniquePdfPath(dir, baseName) {
+  const base = sanitizeFilenameComponent(baseName) || 'invoice';
+  let candidate = path.join(dir, `${base}.pdf`);
+  if (!fs.existsSync(candidate)) return candidate;
+
+  // If a file already exists, add a suffix.
+  for (let i = 2; i < 500; i += 1) {
+    candidate = path.join(dir, `${base} (${i}).pdf`);
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+
+  // Fallback (very unlikely).
+  return path.join(dir, `${base}-${Date.now()}.pdf`);
+}
+
 /**
  * Generate PDF invoice from loads data
  * @param {Array} loadIds - Array of load IDs to include in invoice
@@ -153,7 +179,12 @@ async function generateInvoicePDF(loadIds, invoiceData) {
     fs.mkdirSync(invoicesDir, { recursive: true });
   }
 
-  const pdfPath = path.join(invoicesDir, `${templateData.invoiceNumber}.pdf`);
+  // Filename format: "{Carrier name} invoice {ending monday date}"
+  // endingMonday is expected to be an ISO date string "YYYY-MM-DD" (passed from invoice generation).
+  const carrierName = carrier?.name || 'Carrier';
+  const endingMonday = invoiceData?.endingMonday || '';
+  const preferredBaseName = `${carrierName} invoice ${endingMonday}`.trim();
+  const pdfPath = uniquePdfPath(invoicesDir, preferredBaseName || templateData.invoiceNumber);
   
   await page.pdf({
     path: pdfPath,

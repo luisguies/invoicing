@@ -6,18 +6,21 @@ function toUtcMidnight(dateValue) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
-function datesHaveSameUtcYmd(a, b) {
-  return (
-    a.getUTCFullYear() === b.getUTCFullYear() &&
-    a.getUTCMonth() === b.getUTCMonth() &&
-    a.getUTCDate() === b.getUTCDate()
-  );
+function startOfWeekMondayUtc(utcMidnight) {
+  const dow = utcMidnight.getUTCDay(); // Sun=0 ... Sat=6
+  const daysSinceMonday = dow === 0 ? 6 : dow - 1; // Mon=0 ... Sun=6
+  return new Date(utcMidnight.getTime() - daysSinceMonday * MS_PER_DAY);
 }
 
 /**
- * Corrected rule:
- * - invoice Monday is the Monday of the delivery week (delivery on Monday stays that Monday)
- * - exception: if pickup happens on that invoice Monday (same calendar date), push to next week
+ * Weekly selection rule (Monday -> next Monday):
+ * - Loads are assigned to the invoice week based on the pickup week (Monday start).
+ * - "Ending Monday" is the next Monday boundary (start + 7 days).
+ * - If a load delivers AFTER the ending Monday, it is moved to the next invoice week.
+ *
+ * Notes:
+ * - Pickup ON the ending Monday should belong to the next week naturally (it has a different pickup week).
+ * - Delivery ON the ending Monday stays in the current week (only AFTER moves).
  *
  * Returns:
  * - invoiceMonday: Date at UTC midnight
@@ -28,12 +31,11 @@ function computeInvoiceWeekFields(pickupDate, deliveryDate) {
   const deliveryMidnight = toUtcMidnight(deliveryDate);
   if (!pickupMidnight || !deliveryMidnight) return null;
 
-  const deliveryDow = deliveryMidnight.getUTCDay(); // Sun=0 ... Sat=6
-  const daysSinceMonday = deliveryDow === 0 ? 6 : deliveryDow - 1; // Mon=0 ... Sun=6
+  let invoiceMonday = startOfWeekMondayUtc(pickupMidnight);
 
-  let invoiceMonday = new Date(deliveryMidnight.getTime() - daysSinceMonday * MS_PER_DAY);
-
-  if (datesHaveSameUtcYmd(pickupMidnight, invoiceMonday)) {
+  // If delivery spills past the week boundary, move to next week (repeat if needed).
+  // "After the ending Monday" means strictly greater than the boundary date.
+  while (deliveryMidnight.getTime() > invoiceMonday.getTime() + 7 * MS_PER_DAY) {
     invoiceMonday = new Date(invoiceMonday.getTime() + 7 * MS_PER_DAY);
   }
 

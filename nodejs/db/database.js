@@ -101,6 +101,11 @@ const loadSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  invoiced: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
   date_conflict_ids: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Load'

@@ -72,8 +72,18 @@ export const getLoads = async (filters = {}) => {
   return response.data;
 };
 
+export const createLoad = async (loadData) => {
+  const response = await api.post('/loads', loadData);
+  return response.data;
+};
+
 export const getLoadsGrouped = async () => {
   const response = await api.get('/loads/grouped');
+  return response.data;
+};
+
+export const searchInvoicedLoads = async (filters = {}) => {
+  const response = await api.get('/loads/invoiced', { params: filters });
   return response.data;
 };
 

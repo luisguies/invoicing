@@ -48,13 +48,19 @@ function compareLoadsByDriverName(a, b) {
 // Get all loads (with optional filters)
 router.get('/', async (req, res) => {
   try {
-    const { carrier_id, driver_id, cancelled, confirmed } = req.query;
+    const { carrier_id, driver_id, cancelled, confirmed, invoiced } = req.query;
     
     const query = {};
     if (carrier_id) query.carrier_id = carrier_id;
     if (driver_id) query.driver_id = driver_id;
     if (cancelled !== undefined) query.cancelled = cancelled === 'true';
     if (confirmed !== undefined) query.confirmed = confirmed === 'true';
+    // Exclude invoiced loads by default unless explicitly requested
+    if (invoiced !== undefined) {
+      query.invoiced = invoiced === 'true';
+    } else {
+      query.invoiced = false;
+    }
 
     // Ensure conflict flags are up-to-date on refresh (informational only; never blocks).
     try {
@@ -78,15 +84,64 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Search invoiced loads
+router.get('/invoiced', async (req, res) => {
+  try {
+    const { carrier_id, load_number, driver_id } = req.query;
+    
+    const query = { invoiced: true }; // Only search invoiced loads
+    
+    if (carrier_id) {
+      query.carrier_id = carrier_id;
+    }
+    
+    if (load_number) {
+      // Case-insensitive partial match for load number
+      query.load_number = { $regex: load_number, $options: 'i' };
+    }
+    
+    if (driver_id) {
+      query.driver_id = driver_id;
+    }
+
+    // Ensure conflict flags are up-to-date on refresh (informational only; never blocks).
+    try {
+      const seedLoads = await Load.find(query).select('_id driver_id carrier_id load_number');
+      await refreshConflictsForLoads(seedLoads);
+    } catch (e) {
+      console.error('Conflict refresh failed (GET /loads/invoiced):', e);
+    }
+
+    const loads = await Load.find(query)
+      .populate('carrier_id', 'name aliases')
+      .populate('driver_id', 'name aliases')
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('duplicate_conflict_ids', 'load_number pickup_date delivery_date')
+      .sort({ created_at: -1 });
+
+    res.json(loads);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get loads grouped by carrier
 router.get('/grouped', async (req, res) => {
   try {
-    const { cancelled } = req.query;
+    const { cancelled, invoiced } = req.query;
     
-    const query = { cancelled: false }; // Always exclude cancelled loads from grouped view
+    const query = { 
+      cancelled: false, // Always exclude cancelled loads from grouped view
+      invoiced: false // Always exclude invoiced loads from grouped view
+    };
     if (cancelled === 'true') {
       // If user wants cancelled, show all
       delete query.cancelled;
+    }
+    if (invoiced === 'true') {
+      // If user wants invoiced, show all
+      delete query.invoiced;
     }
 
     // Ensure conflict flags are up-to-date on refresh (informational only; never blocks).

@@ -117,7 +117,12 @@ const ListPage = () => {
     <div className="list-page">
       <div className="page-header">
         <h2>Loads</h2>
-        <button onClick={loadData} className="refresh-btn">Refresh</button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button onClick={() => navigate('/loads/new')} className="refresh-btn">
+            Create Load
+          </button>
+          <button onClick={loadData} className="refresh-btn">Refresh</button>
+        </div>
       </div>
 
       <InvoiceRules onRuleSelect={setSelectedRule} />

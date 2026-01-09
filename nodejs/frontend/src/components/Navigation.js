@@ -24,7 +24,7 @@ const Navigation = () => {
         <div className="nav-links">
           <Link 
             to="/upload" 
-            className={location.pathname === '/upload' ? 'active' : ''}
+            className={location.pathname.startsWith('/upload') ? 'active' : ''}
           >
             Upload
           </Link>
@@ -34,15 +34,33 @@ const Navigation = () => {
           >
             Loads
           </Link>
+          <Link
+            to="/loads/new"
+            className={location.pathname === '/loads/new' ? 'active' : ''}
+          >
+            Create Load
+          </Link>
           <Link 
             to="/print" 
-            className={location.pathname === '/print' ? 'active' : ''}
+            className={location.pathname.startsWith('/print') ? 'active' : ''}
           >
             Invoices
           </Link>
+          <Link
+            to="/invoiced-loads"
+            className={location.pathname === '/invoiced-loads' ? 'active' : ''}
+          >
+            Invoiced Loads
+          </Link>
+          <Link
+            to="/tools/load-invoice-creator"
+            className={location.pathname === '/tools/load-invoice-creator' ? 'active' : ''}
+          >
+            Load Invoice Creator
+          </Link>
           <Link 
             to="/settings" 
-            className={location.pathname === '/settings' ? 'active' : ''}
+            className={location.pathname.startsWith('/settings') ? 'active' : ''}
           >
             Settings
           </Link>

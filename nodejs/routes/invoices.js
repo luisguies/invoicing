@@ -6,6 +6,15 @@ const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
 const fs = require('fs');
 const path = require('path');
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function parseInvoiceWeekIdToUtcMonday(invoiceWeekId) {
+  if (!invoiceWeekId) return null;
+  const d = new Date(`${invoiceWeekId}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
 // Get all invoices
 router.get('/', async (req, res) => {
   try {
@@ -80,6 +89,14 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
+    // Unmark loads as invoiced when invoice is deleted
+    if (invoice.load_ids && Array.isArray(invoice.load_ids) && invoice.load_ids.length > 0) {
+      await Load.updateMany(
+        { _id: { $in: invoice.load_ids } },
+        { $set: { invoiced: false } }
+      );
+    }
+
     await Invoice.findByIdAndDelete(req.params.id);
 
     res.json({
@@ -106,23 +123,30 @@ router.post('/generate', async (req, res) => {
       }
 
       const query = {
-        cancelled: false // Always exclude cancelled loads
+        cancelled: false, // Always exclude cancelled loads
+        invoiced: false // Always exclude invoiced loads
       };
 
       if (rule.carrier_id) {
         query.carrier_id = rule.carrier_id;
       }
 
+      // Weekly selection semantics:
+      // - earliest_pickup_date is inclusive (start boundary)
+      // - latest_delivery_date represents the "ending Monday" boundary
+      //   - pickup ON the ending Monday should move to the next invoice => pickup_date is EXCLUSIVE (<)
+      //   - delivery AFTER the ending Monday should move to the next invoice => delivery_date is INCLUSIVE (<=)
       if (rule.earliest_pickup_date) {
         query.pickup_date = { $gte: rule.earliest_pickup_date };
       }
 
       if (rule.latest_delivery_date) {
         if (query.pickup_date) {
-          query.pickup_date.$lte = rule.latest_delivery_date;
+          query.pickup_date.$lt = rule.latest_delivery_date;
         } else {
-          query.delivery_date = { $lte: rule.latest_delivery_date };
+          query.pickup_date = { $lt: rule.latest_delivery_date };
         }
+        query.delivery_date = { $lte: rule.latest_delivery_date };
       }
 
       // Only include confirmed loads unless user explicitly allows unconfirmed
@@ -136,7 +160,8 @@ router.post('/generate', async (req, res) => {
       // Use provided load IDs, but filter out cancelled (and optionally unconfirmed)
       const query = {
         _id: { $in: load_ids },
-        cancelled: false
+        cancelled: false,
+        invoiced: false // Always exclude invoiced loads
       };
 
       // Only include confirmed loads unless user explicitly allows unconfirmed
@@ -158,7 +183,8 @@ router.post('/generate', async (req, res) => {
     // The PDF generation assumes a single carrier for bill-to details.
     const loadsForGrouping = await Load.find({
       _id: { $in: loadIdsToUse },
-      cancelled: false
+      cancelled: false,
+      invoiced: false // Double-check: exclude invoiced loads
     }).select('_id carrier_id pickup_date delivery_date invoice_monday invoice_week_id');
 
     const missingCarrier = loadsForGrouping.filter(l => !l.carrier_id).map(l => l._id);
@@ -251,9 +277,15 @@ router.post('/generate', async (req, res) => {
           ? baseInvoiceNumber
           : `${baseInvoiceNumber}-${weekCompact}-${String(i + 1).padStart(2, '0')}`;
 
+      const invoiceWeekMonday = parseInvoiceWeekIdToUtcMonday(invoiceWeekId);
+      const endingMonday =
+        invoiceWeekMonday ? new Date(invoiceWeekMonday.getTime() + 7 * MS_PER_DAY) : null;
+      const endingMondayId = endingMonday ? endingMonday.toISOString().slice(0, 10) : null;
+
       const result = await generateInvoicePDF(loadIds, {
         ...(invoiceData || {}),
-        invoiceNumber
+        invoiceNumber,
+        endingMonday: endingMondayId
       });
 
       const pdfPath = result.pdfPath;
@@ -278,6 +310,21 @@ router.post('/generate', async (req, res) => {
 
       await invoice.save();
       createdInvoices.push(invoice);
+    }
+
+    // Mark all loads in the created invoices as invoiced
+    const allInvoicedLoadIds = [];
+    for (const invoice of createdInvoices) {
+      if (invoice.load_ids && Array.isArray(invoice.load_ids)) {
+        allInvoicedLoadIds.push(...invoice.load_ids);
+      }
+    }
+
+    if (allInvoicedLoadIds.length > 0) {
+      await Load.updateMany(
+        { _id: { $in: allInvoicedLoadIds } },
+        { $set: { invoiced: true } }
+      );
     }
 
     const populatedInvoices = await Invoice.find({ _id: { $in: createdInvoices.map(i => i._id) } })
