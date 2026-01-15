@@ -2,3 +2,4 @@ keys/
 *.keys
 *.env
 spo-transport-invoices-9936b835298b.json
+*.ps1
