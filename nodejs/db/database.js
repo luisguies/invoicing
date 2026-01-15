@@ -246,6 +246,10 @@ const settingsSchema = new mongoose.Schema({
     cityStateZip: { type: String, trim: true },
     phone: { type: String, trim: true }
   },
+  hideInvoicedLoads: {
+    type: Boolean,
+    default: false
+  },
   updated_at: {
     type: Date,
     default: Date.now

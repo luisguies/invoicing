@@ -95,6 +95,16 @@
   color: white;
 }
 
+.invoice-btn {
+  background-color: #007bff !important;
+  color: white;
+}
+
+.uninvoice-btn {
+  background-color: #6c757d !important;
+  color: white;
+}
+
 .amount {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -176,3 +186,18 @@
   font-weight: 500;
 }
 
+.invoiced-cell {
+  text-align: center;
+}
+
+.invoiced-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #007bff;
+}
+
+.invoiced-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

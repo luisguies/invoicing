@@ -38,6 +38,22 @@ const ListPage = () => {
       return;
     }
 
+    // If load is marked as invoiced, remove it from the list (invoiced loads should only appear in Invoiced Loads page)
+    if (updatedLoad?.invoiced === true) {
+      setGroups((prevGroups) => {
+        return prevGroups.map((group) => {
+          if (!group?.loads) return group;
+          const filteredLoads = group.loads.filter((l) => l._id !== updatedLoad._id);
+          if (filteredLoads.length === 0 && group.loads.length > 0) {
+            // If this was the last load in the group, return null to filter it out
+            return null;
+          }
+          return { ...group, loads: filteredLoads };
+        }).filter(Boolean); // Remove null groups
+      });
+      return;
+    }
+
     setGroups((prevGroups) => {
       if (!updatedLoad?._id) return prevGroups;
 

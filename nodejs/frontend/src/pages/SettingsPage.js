@@ -13,7 +13,8 @@ const SettingsPage = () => {
       name: '',
       cityStateZip: '',
       phone: ''
-    }
+    },
+    hideInvoicedLoads: false
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,7 +32,8 @@ const SettingsPage = () => {
           name: '',
           cityStateZip: '',
           phone: ''
-        }
+        },
+        hideInvoicedLoads: data.hideInvoicedLoads !== undefined ? data.hideInvoicedLoads : false
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -108,6 +110,21 @@ const SettingsPage = () => {
                   placeholder="5.0"
                 />
                 <small>Default commission rate used for invoice generation</small>
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.hideInvoicedLoads}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      hideInvoicedLoads: e.target.checked
+                    })}
+                  />
+                  Hide invoiced loads
+                </label>
+                <small>When enabled, invoiced loads will be hidden from the main loads list</small>
               </div>
 
               <div className="form-section">

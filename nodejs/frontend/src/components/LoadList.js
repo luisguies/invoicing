@@ -49,6 +49,7 @@ const LoadList = ({ groups, onLoadUpdate, onLoadDelete }) => {
                 <th>Amount</th>
                 <th>Driver</th>
                 <th>Carrier</th>
+                <th>Invoiced</th>
                 <th>Actions</th>
               </tr>
             </thead>

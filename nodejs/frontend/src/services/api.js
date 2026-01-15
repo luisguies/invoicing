@@ -125,6 +125,11 @@ export const updateLoadCarrier = async (id, carrierId, saveAlias = false) => {
   return response.data;
 };
 
+export const markLoadAsInvoiced = async (id, invoiced) => {
+  const response = await api.patch(`/loads/${id}/invoiced`, { invoiced });
+  return response.data;
+};
+
 export const getLoadConflicts = async (id) => {
   const response = await api.get(`/loads/${id}/conflicts`);
   return response.data;

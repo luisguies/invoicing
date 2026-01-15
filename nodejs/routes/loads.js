@@ -55,11 +55,14 @@ router.get('/', async (req, res) => {
     if (driver_id) query.driver_id = driver_id;
     if (cancelled !== undefined) query.cancelled = cancelled === 'true';
     if (confirmed !== undefined) query.confirmed = confirmed === 'true';
-    // Exclude invoiced loads by default unless explicitly requested
+    
+    // Always exclude invoiced loads from normal loads list unless explicitly requested
+    // Invoiced loads should only appear in the /loads/invoiced endpoint
+    // Only exclude loads where invoiced is explicitly true
     if (invoiced !== undefined) {
       query.invoiced = invoiced === 'true';
     } else {
-      query.invoiced = false;
+      query.invoiced = { $ne: true }; // Exclude only loads where invoiced is true
     }
 
     // Ensure conflict flags are up-to-date on refresh (informational only; never blocks).
@@ -132,16 +135,27 @@ router.get('/grouped', async (req, res) => {
     const { cancelled, invoiced } = req.query;
     
     const query = { 
-      cancelled: false, // Always exclude cancelled loads from grouped view
-      invoiced: false // Always exclude invoiced loads from grouped view
+      cancelled: false // Always exclude cancelled loads from grouped view
     };
+    
     if (cancelled === 'true') {
       // If user wants cancelled, show all
       delete query.cancelled;
     }
-    if (invoiced === 'true') {
-      // If user wants invoiced, show all
-      delete query.invoiced;
+    
+    // Always exclude invoiced loads from grouped loads list unless explicitly requested
+    // Invoiced loads should only appear in the /loads/invoiced endpoint
+    // Only exclude loads where invoiced is explicitly true
+    if (invoiced !== undefined) {
+      if (invoiced === 'true') {
+        // User explicitly wants invoiced loads
+        query.invoiced = true;
+      } else {
+        // User explicitly doesn't want invoiced loads
+        query.invoiced = { $ne: true };
+      }
+    } else {
+      query.invoiced = { $ne: true }; // Exclude only loads where invoiced is true
     }
 
     // Ensure conflict flags are up-to-date on refresh (informational only; never blocks).
@@ -567,6 +581,36 @@ router.patch('/:id/confirm', async (req, res) => {
     }
 
     load.confirmed = true;
+    await load.save();
+
+    const populatedLoad = await Load.findById(load._id)
+      .populate('carrier_id', 'name aliases')
+      .populate('driver_id', 'name aliases')
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('duplicate_conflict_ids', 'load_number pickup_date delivery_date');
+
+    res.json(populatedLoad);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mark load as invoiced/uninvoiced
+router.patch('/:id/invoiced', async (req, res) => {
+  try {
+    const { invoiced } = req.body;
+    
+    if (invoiced === undefined) {
+      return res.status(400).json({ error: 'invoiced field is required' });
+    }
+    
+    const load = await Load.findById(req.params.id);
+    if (!load) {
+      return res.status(404).json({ error: 'Load not found' });
+    }
+
+    load.invoiced = invoiced === true;
     await load.save();
 
     const populatedLoad = await Load.findById(load._id)

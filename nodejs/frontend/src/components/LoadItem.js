@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatDate, formatDateInput, parseDateInputToUtcDate } from '../utils/dateUtils';
-import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver } from '../services/api';
+import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver, markLoadAsInvoiced } from '../services/api';
 import './LoadItem.css';
 
 const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = false, ensureDriversLoaded }) => {
@@ -118,6 +118,21 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
     }
   };
 
+  const handleMarkAsInvoiced = async (e) => {
+    const newInvoicedStatus = e.target.checked;
+    setLoading(true);
+    try {
+      const updatedLoad = await markLoadAsInvoiced(load._id, newInvoicedStatus);
+      onUpdate(updatedLoad, { refresh: false });
+    } catch (error) {
+      // Revert checkbox on error
+      e.target.checked = !newInvoicedStatus;
+      alert('Failed to update load: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCarrierSelect = async () => {
     if (!selectedCarrierId) {
       alert('Please select a carrier');
@@ -222,6 +237,14 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
           />
         </td>
         <td>
+          <input
+            type="checkbox"
+            checked={load.invoiced || false}
+            disabled={loading}
+            onChange={handleMarkAsInvoiced}
+          />
+        </td>
+        <td>
           <button onClick={handleSave} disabled={loading}>Save</button>
           <button onClick={() => setEditing(false)} disabled={loading}>Cancel</button>
         </td>
@@ -315,6 +338,16 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
             {load.carrier_id?.name || 'No carrier'}
           </span>
         )}
+      </td>
+      <td className="invoiced-cell">
+        <input
+          type="checkbox"
+          checked={load.invoiced || false}
+          onChange={handleMarkAsInvoiced}
+          disabled={loading}
+          title={load.invoiced ? 'Mark as not invoiced' : 'Mark as invoiced'}
+          className="invoiced-checkbox"
+        />
       </td>
       <td className="actions">
         <button

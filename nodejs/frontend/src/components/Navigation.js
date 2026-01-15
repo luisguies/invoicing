@@ -53,6 +53,12 @@ const Navigation = () => {
             Invoiced Loads
           </Link>
           <Link
+            to="/calendar"
+            className={location.pathname === '/calendar' ? 'active' : ''}
+          >
+            Calendar
+          </Link>
+          <Link
             to="/tools/load-invoice-creator"
             className={location.pathname === '/tools/load-invoice-creator' ? 'active' : ''}
           >

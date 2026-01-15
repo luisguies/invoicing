@@ -15,7 +15,8 @@ router.get('/', async (req, res) => {
           name: '',
           cityStateZip: '',
           phone: ''
-        }
+        },
+        hideInvoicedLoads: false
       });
       await settings.save();
     }
@@ -29,14 +30,15 @@ router.get('/', async (req, res) => {
 // Update settings
 router.put('/', async (req, res) => {
   try {
-    const { defaultRate, billTo } = req.body;
+    const { defaultRate, billTo, hideInvoicedLoads } = req.body;
     
     let settings = await Settings.findOne();
     
     if (!settings) {
       settings = new Settings({
         defaultRate: defaultRate || 5.0,
-        billTo: billTo || {}
+        billTo: billTo || {},
+        hideInvoicedLoads: hideInvoicedLoads !== undefined ? hideInvoicedLoads : false
       });
     } else {
       if (defaultRate !== undefined) {
@@ -44,6 +46,9 @@ router.put('/', async (req, res) => {
       }
       if (billTo !== undefined) {
         settings.billTo = billTo;
+      }
+      if (hideInvoicedLoads !== undefined) {
+        settings.hideInvoicedLoads = hideInvoicedLoads;
       }
     }
     
