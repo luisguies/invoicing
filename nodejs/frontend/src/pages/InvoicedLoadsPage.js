@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { searchInvoicedLoads, getCarriers, getDrivers } from '../services/api';
-import { formatDate } from '../utils/dateUtils';
+import { searchInvoicedLoads, getCarriers, getDrivers, markLoadAsInvoiced } from '../services/api';
+import { formatDate, formatDateInput } from '../utils/dateUtils';
 import './InvoicedLoadsPage.css';
 
 const InvoicedLoadsPage = () => {
@@ -11,7 +11,9 @@ const InvoicedLoadsPage = () => {
   const [filters, setFilters] = useState({
     carrier_id: '',
     load_number: '',
-    driver_id: ''
+    driver_id: '',
+    pickup_date_from: '',
+    delivery_date_to: ''
   });
 
   useEffect(() => {
@@ -48,6 +50,8 @@ const InvoicedLoadsPage = () => {
       if (filtersToUse.carrier_id) cleanFilters.carrier_id = filtersToUse.carrier_id;
       if (filtersToUse.load_number) cleanFilters.load_number = filtersToUse.load_number;
       if (filtersToUse.driver_id) cleanFilters.driver_id = filtersToUse.driver_id;
+      if (filtersToUse.pickup_date_from) cleanFilters.pickup_date_from = filtersToUse.pickup_date_from;
+      if (filtersToUse.delivery_date_to) cleanFilters.delivery_date_to = filtersToUse.delivery_date_to;
 
       const data = await searchInvoicedLoads(cleanFilters);
       setLoads(data || []);
@@ -74,10 +78,26 @@ const InvoicedLoadsPage = () => {
     const emptyFilters = {
       carrier_id: '',
       load_number: '',
-      driver_id: ''
+      driver_id: '',
+      pickup_date_from: '',
+      delivery_date_to: ''
     };
     setFilters(emptyFilters);
     performSearch(emptyFilters);
+  };
+
+  const handleUnmarkAsInvoiced = async (loadId) => {
+    if (!window.confirm('Are you sure you want to remove this load from invoiced status? It will appear in the normal loads list again.')) {
+      return;
+    }
+
+    try {
+      await markLoadAsInvoiced(loadId, false);
+      // Remove the load from the list since it's no longer invoiced
+      setLoads(prevLoads => prevLoads.filter(load => load._id !== loadId));
+    } catch (error) {
+      alert('Failed to unmark load as invoiced: ' + (error.response?.data?.error || error.message));
+    }
   };
 
   return (
@@ -134,6 +154,28 @@ const InvoicedLoadsPage = () => {
             </select>
           </div>
 
+          <div className="search-field">
+            <label htmlFor="pickup_date_from">Pickup Date From:</label>
+            <input
+              id="pickup_date_from"
+              type="date"
+              value={filters.pickup_date_from}
+              onChange={(e) => handleFilterChange('pickup_date_from', e.target.value)}
+            />
+            <small>Loads picked up from this date</small>
+          </div>
+
+          <div className="search-field">
+            <label htmlFor="delivery_date_to">Delivery Date To:</label>
+            <input
+              id="delivery_date_to"
+              type="date"
+              value={filters.delivery_date_to}
+              onChange={(e) => handleFilterChange('delivery_date_to', e.target.value)}
+            />
+            <small>Loads delivered on or before this date</small>
+          </div>
+
           <button type="submit" className="search-btn" disabled={loading}>
             {loading ? 'Searching...' : 'Search'}
           </button>
@@ -157,6 +199,7 @@ const InvoicedLoadsPage = () => {
                 <th>Origin</th>
                 <th>Destination</th>
                 <th>Amount</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -170,6 +213,15 @@ const InvoicedLoadsPage = () => {
                   <td>{load.pickup_city}, {load.pickup_state}</td>
                   <td>{load.delivery_city}, {load.delivery_state}</td>
                   <td>${Number(load.carrier_pay || 0).toFixed(2)}</td>
+                  <td>
+                    <button
+                      onClick={() => handleUnmarkAsInvoiced(load._id)}
+                      className="unmark-invoiced-btn"
+                      title="Remove from invoiced status"
+                    >
+                      Unmark as Invoiced
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

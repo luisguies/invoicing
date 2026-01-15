@@ -1,18 +1,14 @@
 const express = require('express');
 const router = express.Router();
 
-const  = 'GG4h4PzUoqL5L5XLqTpFoM';
-
-// Check if using default password
-router.get('/default-password', (req, res) => {
-  const usingDefault = !process.env.LOGIN_PASSWORD;
-  res.json({ usingDefault });
-});
-
 // Login endpoint
 router.post('/login', (req, res) => {
   const { password } = req.body;
-  const correctPassword = process.env.LOGIN_PASSWORD || ;
+  const correctPassword = process.env.LOGIN_PASSWORD;
+
+  if (!correctPassword) {
+    return res.status(500).json({ error: 'Login password not configured. Please set LOGIN_PASSWORD in .env file.' });
+  }
 
   if (password === correctPassword) {
     // Set session or token

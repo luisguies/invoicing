@@ -48,11 +48,6 @@ export const checkAuth = async () => {
   return response.data;
 };
 
-export const checkDefaultPassword = async () => {
-  const response = await api.get('/auth/default-password');
-  return response.data;
-};
-
 // Upload API
 export const uploadPDF = async (file) => {
   const formData = new FormData();

@@ -86,6 +86,37 @@ const PrintPage = () => {
     setPdfUrl(null);
   };
 
+  // Helper function to get carrier name from invoice (the billTo name)
+  const getCarrierName = (invoice) => {
+    // Use the billTo name, which is the carrier the invoice is billed to
+    if (invoice.billTo && invoice.billTo.name) {
+      return invoice.billTo.name;
+    }
+    // Fallback: try to get from first load's carrier if billTo is not set
+    if (invoice.load_ids && invoice.load_ids.length > 0) {
+      const firstLoad = invoice.load_ids[0];
+      if (firstLoad && firstLoad.carrier_id) {
+        return typeof firstLoad.carrier_id === 'object' 
+          ? firstLoad.carrier_id.name 
+          : 'Unknown Carrier';
+      }
+    }
+    return 'Unknown Carrier';
+  };
+
+  // Helper function to get invoice date
+  const getInvoiceDate = (invoice) => {
+    // Use invoiceDate if available, otherwise use generated_at
+    return invoice.invoiceDate || invoice.generated_at;
+  };
+
+  // Helper function to format invoice label
+  const getInvoiceLabel = (invoice) => {
+    const carrierName = getCarrierName(invoice);
+    const date = getInvoiceDate(invoice);
+    return `${carrierName} invoice ${formatDate(date)}`;
+  };
+
   if (loading) {
     return <div className="loading">Loading invoices...</div>;
   }
@@ -107,7 +138,7 @@ const PrintPage = () => {
           {invoices.map((invoice) => (
             <div key={invoice._id} className="invoice-card">
               <div className="invoice-header">
-                <h3>Invoice #{invoice.invoice_number}</h3>
+                <h3>{getInvoiceLabel(invoice)}</h3>
                 <span className="invoice-date">
                   Generated: {formatDate(invoice.generated_at)}
                 </span>
@@ -154,7 +185,7 @@ const PrintPage = () => {
       {viewingInvoice && pdfUrl && (
         <div className="pdf-viewer-modal">
           <div className="pdf-viewer-header">
-            <h3>Invoice #{viewingInvoice.invoice_number}</h3>
+            <h3>{getInvoiceLabel(viewingInvoice)}</h3>
             <button onClick={handleCloseViewer} className="close-btn">×</button>
           </div>
           <PDFViewer pdfUrl={pdfUrl} invoiceNumber={viewingInvoice.invoice_number} />

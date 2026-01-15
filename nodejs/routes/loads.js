@@ -90,7 +90,7 @@ router.get('/', async (req, res) => {
 // Search invoiced loads
 router.get('/invoiced', async (req, res) => {
   try {
-    const { carrier_id, load_number, driver_id } = req.query;
+    const { carrier_id, load_number, driver_id, pickup_date_from, delivery_date_to } = req.query;
     
     const query = { invoiced: true }; // Only search invoiced loads
     
@@ -105,6 +105,20 @@ router.get('/invoiced', async (req, res) => {
     
     if (driver_id) {
       query.driver_id = driver_id;
+    }
+    
+    // Filter by pickup date (loads picked up from this date onwards)
+    if (pickup_date_from) {
+      const pickupFromDate = new Date(pickup_date_from);
+      pickupFromDate.setHours(0, 0, 0, 0);
+      query.pickup_date = { $gte: pickupFromDate };
+    }
+    
+    // Filter by delivery date (loads delivered on or before this date)
+    if (delivery_date_to) {
+      const deliveryToDate = new Date(delivery_date_to);
+      deliveryToDate.setHours(23, 59, 59, 999); // End of day
+      query.delivery_date = { $lte: deliveryToDate };
     }
 
     // Ensure conflict flags are up-to-date on refresh (informational only; never blocks).
