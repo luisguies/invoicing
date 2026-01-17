@@ -37,7 +37,7 @@ router.get('/:id', async (req, res) => {
 // Create new driver
 router.post('/', async (req, res) => {
   try {
-    const { name, aliases, carrier_id, groupLabel } = req.body;
+    const { name, aliases, carrier_id, groupLabel, color } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Driver name is required' });
@@ -57,7 +57,8 @@ router.post('/', async (req, res) => {
       name: name.trim(),
       aliases: aliases || [],
       carrier_id: carrier_id,
-      groupLabel: groupLabel ? groupLabel.trim() : undefined
+      groupLabel: groupLabel ? groupLabel.trim() : undefined,
+      color: color ? color.trim() : undefined
     });
 
     await driver.save();
@@ -77,7 +78,7 @@ router.post('/', async (req, res) => {
 // Update driver
 router.put('/:id', async (req, res) => {
   try {
-    const { name, aliases, carrier_id, groupLabel } = req.body;
+    const { name, aliases, carrier_id, groupLabel, color } = req.body;
     
     const driver = await Driver.findById(req.params.id);
     if (!driver) {
@@ -88,6 +89,7 @@ router.put('/:id', async (req, res) => {
     if (name !== undefined) updateData.name = name.trim();
     if (aliases !== undefined) updateData.aliases = aliases;
     if (groupLabel !== undefined) updateData.groupLabel = groupLabel ? groupLabel.trim() : undefined;
+    if (color !== undefined) updateData.color = color ? color.trim() : null;
     
     if (carrier_id !== undefined) {
       // Verify new carrier exists

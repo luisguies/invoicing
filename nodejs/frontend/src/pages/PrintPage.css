@@ -42,6 +42,27 @@
 }
 
 .invoices-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.invoice-company-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.company-header {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.5rem;
+  font-weight: 600;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #007bff;
+}
+
+.company-invoices {
   display: grid;
   gap: 1.5rem;
 }
@@ -62,9 +83,14 @@
   border-bottom: 1px solid #dee2e6;
 }
 
-.invoice-header h3 {
+.invoice-header h3,
+.invoice-header h4 {
   margin: 0;
   color: #2c3e50;
+}
+
+.invoice-header h4 {
+  font-size: 1.1rem;
 }
 
 .invoice-date {

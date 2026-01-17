@@ -11,7 +11,8 @@ const DriverManager = () => {
     name: '',
     aliases: '',
     groupLabel: '',
-    carrier_id: ''
+    carrier_id: '',
+    color: ''
   });
 
   useEffect(() => {
@@ -57,7 +58,8 @@ const DriverManager = () => {
         name: '',
         aliases: '',
         groupLabel: '',
-        carrier_id: ''
+        carrier_id: '',
+        color: ''
       });
       loadDrivers();
     } catch (error) {
@@ -71,7 +73,8 @@ const DriverManager = () => {
       name: driver.name || '',
       aliases: driver.aliases ? driver.aliases.join(', ') : '',
       groupLabel: driver.groupLabel || '',
-      carrier_id: driver.carrier_id?._id || driver.carrier_id || ''
+      carrier_id: driver.carrier_id?._id || driver.carrier_id || '',
+      color: driver.color || ''
     });
     setShowForm(true);
   };
@@ -100,7 +103,8 @@ const DriverManager = () => {
               name: '',
               aliases: '',
               groupLabel: '',
-              carrier_id: ''
+              carrier_id: '',
+              color: ''
             });
           }
         }} className="add-btn">
@@ -156,6 +160,35 @@ const DriverManager = () => {
             </select>
           </div>
 
+          <div className="form-group">
+            <label>Calendar Color</label>
+            <div className="color-picker-container">
+              <input
+                type="color"
+                value={formData.color || '#cccccc'}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                className="color-picker"
+              />
+              <input
+                type="text"
+                value={formData.color || ''}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                placeholder="#cccccc"
+                className="color-input"
+                pattern="^#[0-9A-Fa-f]{6}$"
+              />
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, color: '' })}
+                className="clear-color-btn"
+                title="Clear color (use auto-generated)"
+              >
+                Clear
+              </button>
+            </div>
+            <small className="form-help-text">Color used for this driver in the calendar view. Leave empty for auto-generated color.</small>
+          </div>
+
           <div className="form-actions">
             <button type="submit">{editingDriver ? 'Update' : 'Create'}</button>
             <button type="button" onClick={() => {
@@ -170,7 +203,16 @@ const DriverManager = () => {
         {drivers.map(driver => (
           <div key={driver._id} className="driver-item">
             <div className="driver-info">
-              <strong>{driver.name}</strong>
+              <div className="driver-name-row">
+                {driver.color && (
+                  <span 
+                    className="driver-color-indicator" 
+                    style={{ backgroundColor: driver.color }}
+                    title={`Calendar color: ${driver.color}`}
+                  ></span>
+                )}
+                <strong>{driver.name}</strong>
+              </div>
               {driver.groupLabel && (
                 <span className="group-label"> (Group: {driver.groupLabel})</span>
               )}

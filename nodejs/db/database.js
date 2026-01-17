@@ -189,6 +189,12 @@ const driverSchema = new mongoose.Schema({
     trim: true,
     required: false
   },
+  color: {
+    type: String,
+    trim: true,
+    required: false,
+    default: null
+  },
   carrier_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Carrier',

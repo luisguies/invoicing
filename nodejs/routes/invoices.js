@@ -19,7 +19,7 @@ function parseInvoiceWeekIdToUtcMonday(invoiceWeekId) {
 router.get('/', async (req, res) => {
   try {
     const invoices = await Invoice.find()
-      .populate('load_ids', 'load_number pickup_date delivery_date carrier_pay carrier_id')
+      .populate('load_ids', 'load_number pickup_date delivery_date carrier_pay carrier_id invoice_monday invoice_week_id')
       .populate('load_ids.carrier_id', 'name aliases')
       .sort({ generated_at: -1 });
     res.json(invoices);

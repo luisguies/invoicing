@@ -4,6 +4,61 @@ import { formatDate } from '../utils/dateUtils';
 import PDFViewer from '../components/PDFViewer';
 import './PrintPage.css';
 
+// Calculate ending Monday from invoice loads
+// The ending Monday is invoice_monday + 7 days (the Monday that ends the invoice week)
+// All loads in an invoice should have the same invoice_monday since they're grouped by week
+const calculateEndingMonday = (invoice) => {
+  if (!invoice.load_ids || invoice.load_ids.length === 0) {
+    return null;
+  }
+  
+  // Try to get invoice_monday from any load (all loads in an invoice should have the same invoice_monday)
+  let invoiceMonday = null;
+  for (const load of invoice.load_ids) {
+    if (load.invoice_monday) {
+      invoiceMonday = new Date(load.invoice_monday);
+      break; // All loads should have the same invoice_monday
+    }
+  }
+  
+  if (invoiceMonday) {
+    // Ending Monday is invoice_monday + 7 days
+    const endingMonday = new Date(invoiceMonday);
+    endingMonday.setUTCDate(invoiceMonday.getUTCDate() + 7);
+    endingMonday.setUTCHours(0, 0, 0, 0);
+    return endingMonday;
+  }
+  
+  // Fallback: calculate from latest delivery date if invoice_monday is not available
+  let latestDelivery = null;
+  for (const load of invoice.load_ids) {
+    if (load.delivery_date) {
+      const deliveryDate = new Date(load.delivery_date);
+      deliveryDate.setUTCHours(0, 0, 0, 0);
+      if (!latestDelivery || deliveryDate > latestDelivery) {
+        latestDelivery = deliveryDate;
+      }
+    }
+  }
+  
+  if (!latestDelivery) {
+    return null;
+  }
+  
+  // Find the Monday of the week containing the latest delivery date
+  const dayOfWeek = latestDelivery.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const mondayOfWeek = new Date(latestDelivery);
+  mondayOfWeek.setUTCDate(latestDelivery.getUTCDate() - daysSinceMonday);
+  mondayOfWeek.setUTCHours(0, 0, 0, 0);
+  
+  // Ending Monday is the Monday after the week (Monday + 7 days)
+  const endingMonday = new Date(mondayOfWeek);
+  endingMonday.setUTCDate(mondayOfWeek.getUTCDate() + 7);
+  
+  return endingMonday;
+};
+
 const PrintPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,9 +159,14 @@ const PrintPage = () => {
     return 'Unknown Carrier';
   };
 
-  // Helper function to get invoice date
+  // Helper function to get invoice date (ending Monday)
   const getInvoiceDate = (invoice) => {
-    // Use invoiceDate if available, otherwise use generated_at
+    // Calculate ending Monday from loads
+    const endingMonday = calculateEndingMonday(invoice);
+    if (endingMonday) {
+      return endingMonday;
+    }
+    // Fallback to invoiceDate or generated_at
     return invoice.invoiceDate || invoice.generated_at;
   };
 
@@ -115,6 +175,36 @@ const PrintPage = () => {
     const carrierName = getCarrierName(invoice);
     const date = getInvoiceDate(invoice);
     return `${carrierName} invoice ${formatDate(date)}`;
+  };
+  
+  // Group invoices by company
+  const groupInvoicesByCompany = (invoices) => {
+    const grouped = {};
+    
+    invoices.forEach(invoice => {
+      const companyName = getCarrierName(invoice);
+      if (!grouped[companyName]) {
+        grouped[companyName] = [];
+      }
+      grouped[companyName].push(invoice);
+    });
+    
+    // Sort each group by ending Monday date (most recent first)
+    Object.keys(grouped).forEach(company => {
+      grouped[company].sort((a, b) => {
+        const dateA = getInvoiceDate(a);
+        const dateB = getInvoiceDate(b);
+        return new Date(dateB) - new Date(dateA);
+      });
+    });
+    
+    // Sort companies alphabetically
+    const sortedCompanies = Object.keys(grouped).sort();
+    
+    return sortedCompanies.map(company => ({
+      company,
+      invoices: grouped[company]
+    }));
   };
 
   if (loading) {
@@ -135,47 +225,54 @@ const PrintPage = () => {
         </div>
       ) : (
         <div className="invoices-list">
-          {invoices.map((invoice) => (
-            <div key={invoice._id} className="invoice-card">
-              <div className="invoice-header">
-                <h3>{getInvoiceLabel(invoice)}</h3>
-                <span className="invoice-date">
-                  Generated: {formatDate(invoice.generated_at)}
-                </span>
-              </div>
-              <div className="invoice-details">
-                <p>
-                  <strong>Loads:</strong> {invoice.load_ids?.length || 0}
-                </p>
-                <p>
-                  <strong>Total Amount:</strong> $
-                  {(typeof invoice.total === 'number'
-                    ? invoice.total
-                    : (invoice.subtotal || 0)
-                  ).toFixed(2)}
-                </p>
-              </div>
-              <div className="invoice-actions">
-                <button
-                  className="view-btn"
-                  onClick={() => handleView(invoice._id)}
-                >
-                  View PDF
-                </button>
-                <button
-                  className="download-btn"
-                  onClick={() => handleDownload(invoice._id)}
-                  disabled={downloading === invoice._id}
-                >
-                  {downloading === invoice._id ? 'Downloading...' : 'Download PDF'}
-                </button>
-                <button
-                  className="delete-btn"
-                  onClick={() => handleDelete(invoice._id)}
-                  disabled={deleting === invoice._id}
-                >
-                  {deleting === invoice._id ? 'Deleting...' : 'Delete'}
-                </button>
+          {groupInvoicesByCompany(invoices).map(({ company, invoices: companyInvoices }) => (
+            <div key={company} className="invoice-company-group">
+              <h3 className="company-header">{company}</h3>
+              <div className="company-invoices">
+                {companyInvoices.map((invoice) => (
+                  <div key={invoice._id} className="invoice-card">
+                    <div className="invoice-header">
+                      <h4>{getInvoiceLabel(invoice)}</h4>
+                      <span className="invoice-date">
+                        Ending: {formatDate(getInvoiceDate(invoice))}
+                      </span>
+                    </div>
+                    <div className="invoice-details">
+                      <p>
+                        <strong>Loads:</strong> {invoice.load_ids?.length || 0}
+                      </p>
+                      <p>
+                        <strong>Total Amount:</strong> $
+                        {(typeof invoice.total === 'number'
+                          ? invoice.total
+                          : (invoice.subtotal || 0)
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="invoice-actions">
+                      <button
+                        className="view-btn"
+                        onClick={() => handleView(invoice._id)}
+                      >
+                        View PDF
+                      </button>
+                      <button
+                        className="download-btn"
+                        onClick={() => handleDownload(invoice._id)}
+                        disabled={downloading === invoice._id}
+                      >
+                        {downloading === invoice._id ? 'Downloading...' : 'Download PDF'}
+                      </button>
+                      <button
+                        className="delete-btn"
+                        onClick={() => handleDelete(invoice._id)}
+                        disabled={deleting === invoice._id}
+                      >
+                        {deleting === invoice._id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
