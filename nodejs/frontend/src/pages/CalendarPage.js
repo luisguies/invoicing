@@ -3,6 +3,8 @@ import { getLoadsGrouped, getDrivers } from '../services/api';
 import { formatDate } from '../utils/dateUtils';
 import './CalendarPage.css';
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 // Generate a color for a driver based on their ID
 const getDriverColor = (driverId, driverName) => {
   if (!driverId) return '#cccccc'; // Gray for unassigned
@@ -164,121 +166,63 @@ const CalendarPage = () => {
       deliveryAfterMonth
     };
   };
-  
-  // Get load segment info for a specific day
-  const getLoadSegmentForDay = (load, date, spanInfo) => {
-    const checkDate = new Date(date);
-    checkDate.setHours(0, 0, 0, 0);
-    
-    const isPickupDay = checkDate.getTime() === spanInfo.pickupDate.getTime() && spanInfo.pickupInMonth;
-    const isDeliveryDay = checkDate.getTime() === spanInfo.deliveryDate.getTime() && spanInfo.deliveryInMonth;
-    const isInRange = checkDate >= spanInfo.loadStartDate && checkDate <= spanInfo.loadEndDate;
-    
-    if (!isInRange) return null;
-    
-    // Calculate which day of the month this is
-    const { year, month } = getDaysInMonth(currentDate);
-    const firstDay = new Date(year, month, 1);
-    firstDay.setHours(0, 0, 0, 0);
-    const dayIndex = Math.floor((checkDate - firstDay) / (1000 * 60 * 60 * 24));
-    const { startingDayOfWeek } = getDaysInMonth(currentDate);
-    const gridPosition = startingDayOfWeek + dayIndex;
-    const column = gridPosition % 7;
-    const weekRow = Math.floor(gridPosition / 7);
-    
-    // Determine left position and width for this day
-    let leftPercent, widthPercent;
-    
-    // Check if this is the first day of the visible range (pickup before month)
-    const isFirstVisibleDay = checkDate.getTime() === spanInfo.loadStartDate.getTime() && spanInfo.pickupBeforeMonth;
-    // Check if this is the last day of the visible range (delivery after month)
-    const isLastVisibleDay = checkDate.getTime() === spanInfo.loadEndDate.getTime() && spanInfo.deliveryAfterMonth;
-    
-    if (isPickupDay && isDeliveryDay) {
-      // Same day pickup and delivery - show full width
-      leftPercent = (column / 7) * 100;
-      widthPercent = (1 / 7) * 100;
-    } else if (isPickupDay) {
-      // Pickup day - start from right side (50% of day)
-      leftPercent = (column / 7) * 100 + (1 / 7) * 50;
-      widthPercent = (1 / 7) * 50;
-    } else if (isDeliveryDay) {
-      // Delivery day - end at left side (50% of day)
-      leftPercent = (column / 7) * 100;
-      widthPercent = (1 / 7) * 50;
-    } else if (isFirstVisibleDay) {
-      // First visible day but pickup was before month - show from left (full width, already in transit)
-      leftPercent = (column / 7) * 100;
-      widthPercent = (1 / 7) * 100;
-    } else if (isLastVisibleDay) {
-      // Last visible day but delivery is after month - show to right (full width, still in transit)
-      leftPercent = (column / 7) * 100;
-      widthPercent = (1 / 7) * 100;
-    } else {
-      // Day in between - full width
-      leftPercent = (column / 7) * 100;
-      widthPercent = (1 / 7) * 100;
-    }
-    
-    return {
-      leftPercent,
-      widthPercent,
-      weekRow,
-      column,
-      isPickupDay,
-      isDeliveryDay
-    };
-  };
 
-  // Assign lanes to loads to prevent overlapping
-  const assignLoadLanes = (visibleLoads) => {
-    const lanes = [];
-    const loadLaneMap = new Map();
-    
-    // Sort loads by start date, then by end date
-    const sortedLoads = [...visibleLoads].sort((a, b) => {
-      const aInfo = getLoadSpanInfo(a);
-      const bInfo = getLoadSpanInfo(b);
-      if (aInfo.loadStartDate.getTime() !== bInfo.loadStartDate.getTime()) {
-        return aInfo.loadStartDate - bInfo.loadStartDate;
+  const getLoadWeekSegments = (spanInfo) => {
+    const startWeekRow = Math.floor(spanInfo.gridStart / 7);
+    const endWeekRow = Math.floor(spanInfo.gridEnd / 7);
+    const segments = [];
+
+    const isSameDay =
+      spanInfo.pickupInMonth &&
+      spanInfo.deliveryInMonth &&
+      spanInfo.pickupDate.getTime() === spanInfo.deliveryDate.getTime();
+
+    for (let weekRow = startWeekRow; weekRow <= endWeekRow; weekRow += 1) {
+      const weekStartGrid = weekRow * 7;
+      const weekEndGrid = weekStartGrid + 6;
+
+      const segGridStart = Math.max(spanInfo.gridStart, weekStartGrid);
+      const segGridEnd = Math.min(spanInfo.gridEnd, weekEndGrid);
+
+      const startCol = segGridStart % 7;
+      const endCol = segGridEnd % 7;
+      const dayCount = endCol - startCol + 1;
+
+      const isFirstSegment = weekRow === startWeekRow;
+      const isLastSegment = weekRow === endWeekRow;
+
+      // Only clip on pickup day if pickup is the first visible day of the load.
+      const clipStartHalf =
+        !isSameDay &&
+        isFirstSegment &&
+        spanInfo.pickupInMonth &&
+        spanInfo.pickupDate.getTime() === spanInfo.loadStartDate.getTime();
+
+      // Only clip on delivery day if delivery is the last visible day of the load.
+      const clipEndHalf =
+        !isSameDay &&
+        isLastSegment &&
+        spanInfo.deliveryInMonth &&
+        spanInfo.deliveryDate.getTime() === spanInfo.loadEndDate.getTime();
+
+      let clipPath = null;
+      if (clipStartHalf || clipEndHalf) {
+        const dayPortionPercent = 100 / dayCount;
+        const startX = clipStartHalf ? 0.5 * dayPortionPercent : 0;
+        const endX = clipEndHalf ? 100 - 0.5 * dayPortionPercent : 100;
+        clipPath = `polygon(${startX}% 0%, ${endX}% 0%, ${endX}% 100%, ${startX}% 100%)`;
       }
-      return aInfo.loadEndDate - bInfo.loadEndDate;
-    });
-    
-    // For each load, find the first lane where it doesn't overlap with existing loads
-    sortedLoads.forEach(load => {
-      const loadInfo = getLoadSpanInfo(load);
-      
-      // Find a lane where this load doesn't overlap
-      let assignedLane = -1;
-      for (let laneIndex = 0; laneIndex < lanes.length; laneIndex++) {
-        const laneLoads = lanes[laneIndex];
-        // Check if this load overlaps with any load in this lane
-        const hasOverlap = laneLoads.some(existingLoad => {
-          const existingInfo = getLoadSpanInfo(existingLoad);
-          // Two loads overlap if: loadStart <= existingEnd && loadEnd >= existingStart
-          return loadInfo.loadStartDate <= existingInfo.loadEndDate &&
-                 loadInfo.loadEndDate >= existingInfo.loadStartDate;
-        });
-        
-        if (!hasOverlap) {
-          assignedLane = laneIndex;
-          break;
-        }
-      }
-      
-      // If no lane found, create a new one
-      if (assignedLane === -1) {
-        assignedLane = lanes.length;
-        lanes.push([]);
-      }
-      
-      // Assign load to lane
-      lanes[assignedLane].push(load);
-      loadLaneMap.set(load._id, assignedLane);
-    });
-    
-    return loadLaneMap;
+
+      segments.push({
+        weekRow,
+        startCol,
+        dayCount,
+        isFirstSegment,
+        clipPath
+      });
+    }
+
+    return segments;
   };
 
   const navigateMonth = (direction) => {
@@ -310,36 +254,55 @@ const CalendarPage = () => {
   for (let day = 1; day <= daysInMonth; day++) {
     days.push(new Date(year, month, day));
   }
+
+  // Pad trailing cells so the last week is complete (helps overlay math).
+  while (days.length % 7 !== 0) {
+    days.push(null);
+  }
   
-  // Calculate max lanes needed for all visible loads
+  // Visible loads in this month view
   const visibleLoads = loads.filter(load => {
     if (!load.pickup_date || !load.delivery_date) return false;
     const spanInfo = getLoadSpanInfo(load);
     return spanInfo.isVisible;
   });
-  const loadLaneMap = assignLoadLanes(visibleLoads);
-  const laneValues = Array.from(loadLaneMap.values());
-  const maxLanes = laneValues.length > 0 ? Math.max(...laneValues) + 1 : 0;
-  const baseDayHeight = 120;
-  const laneHeight = 22; // Height per lane (20px bar + 2px spacing)
-  const dynamicDayHeight = baseDayHeight + (maxLanes * laneHeight);
 
-  // Get unique drivers for legend
-  const drivers = [];
-  const driverMap = new Map();
-  loads.forEach(load => {
-    if (load.driver_id) {
-      const driverId = typeof load.driver_id === 'object' ? load.driver_id._id : load.driver_id;
-      const driverName = typeof load.driver_id === 'object' ? load.driver_id.name : 'Unknown';
-      if (!driverMap.has(driverId)) {
-        driverMap.set(driverId, { id: driverId, name: driverName, color: driverColors[driverId] || '#cccccc' });
-      }
+  // Build driver rows (one row per driver across the calendar, per week).
+  const driverRowMap = new Map(); // key -> { id, key, name, color }
+  let hasUnassigned = false;
+  visibleLoads.forEach(load => {
+    if (!load.driver_id) {
+      hasUnassigned = true;
+      return;
+    }
+    const driverId = typeof load.driver_id === 'object' ? load.driver_id._id : load.driver_id;
+    const driverName = typeof load.driver_id === 'object' ? load.driver_id.name : 'Unknown';
+    if (!driverRowMap.has(driverId)) {
+      driverRowMap.set(driverId, {
+        id: driverId,
+        key: driverId,
+        name: driverName,
+        color: driverColors[driverId] || getDriverColor(driverId, driverName)
+      });
     }
   });
-  drivers.push(...Array.from(driverMap.values()));
-  if (loads.some(load => !load.driver_id)) {
-    drivers.push({ id: null, name: 'Unassigned', color: '#cccccc' });
+
+  const driverRows = Array.from(driverRowMap.values()).sort((a, b) =>
+    String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+  );
+  if (hasUnassigned) {
+    driverRows.push({ id: null, key: 'unassigned', name: 'Unassigned', color: '#cccccc' });
   }
+
+  const driverIndexByKey = new Map(driverRows.map((d, idx) => [d.key, idx]));
+  const rowCount = driverRows.length;
+
+  // Layout sizing for "rows per driver" inside each day cell/week.
+  const dayNumberHeight = 25;
+  const topOffset = 5;
+  const laneHeight = 22; // 20px bar + 2px gap
+  const baseDayHeight = 45; // space for date + padding
+  const dynamicDayHeight = Math.max(120, baseDayHeight + rowCount * laneHeight + topOffset);
 
   return (
     <div className="calendar-page">
@@ -360,7 +323,7 @@ const CalendarPage = () => {
       <div className="calendar-legend">
         <h4>Drivers:</h4>
         <div className="legend-items">
-          {drivers.map(driver => (
+          {driverRows.map(driver => (
             <div key={driver.id || 'unassigned'} className="legend-item">
               <span 
                 className="legend-color" 
@@ -404,9 +367,46 @@ const CalendarPage = () => {
               </div>
             );
           })}
+
+          {/* Driver row labels (shown in Sunday column for each week) */}
+          {(() => {
+            const weekCount = Math.ceil(days.length / 7);
+            const sundayColWidth = (1 / 7) * 100;
+            const labels = [];
+
+            for (let weekRow = 0; weekRow < weekCount; weekRow += 1) {
+              for (let rowIdx = 0; rowIdx < driverRows.length; rowIdx += 1) {
+                const driver = driverRows[rowIdx];
+                const topPx =
+                  weekRow * dynamicDayHeight +
+                  dayNumberHeight +
+                  topOffset +
+                  rowIdx * laneHeight;
+
+                labels.push(
+                  <div
+                    key={`driver-label-${weekRow}-${driver.key}`}
+                    className="driver-row-label"
+                    style={{
+                      position: 'absolute',
+                      left: '0%',
+                      width: `${sundayColWidth}%`,
+                      top: `${topPx}px`,
+                      height: `${laneHeight - 2}px`
+                    }}
+                    title={driver.name}
+                  >
+                    {driver.name}
+                  </div>
+                );
+              }
+            }
+
+            return labels;
+          })()}
           
-          {/* Render load bars as continuous bars with pickup/delivery day masks */}
-          {visibleLoads.map((load) => {
+          {/* Render load bars as week segments so they continue into next week */}
+          {visibleLoads.flatMap((load) => {
             const driverId = load.driver_id 
               ? (typeof load.driver_id === 'object' ? load.driver_id._id : load.driver_id)
               : null;
@@ -416,87 +416,47 @@ const CalendarPage = () => {
             const color = driverId ? driverColors[driverId] : '#cccccc';
             const spanInfo = getLoadSpanInfo(load);
             
-            if (!spanInfo.isVisible) return null;
-            
-            // Get the lane assignment for this load
-            const lane = loadLaneMap.get(load._id) || 0;
-            const dayNumberHeight = 25;
-            const loadBarHeight = 20;
-            const topOffset = 5;
-            const laneSpacing = loadBarHeight + 2;
-            
-            // Calculate the start column and week row
-            const startColumn = spanInfo.gridStart % 7;
-            const startWeekRow = Math.floor(spanInfo.gridStart / 7);
-            
-            // Calculate base left position and width for continuous bar
-            const leftPercent = (startColumn / 7) * 100;
-            const widthPercent = (spanInfo.spanDays / 7) * 100;
-            
-            // Calculate top position
-            const topPx = (startWeekRow * dynamicDayHeight) + dayNumberHeight + topOffset + (lane * laneSpacing);
-            
-            // Determine if we need masks for pickup/delivery days
-            const needsPickupMask = spanInfo.pickupInMonth && 
-              spanInfo.pickupDate.getTime() === spanInfo.loadStartDate.getTime() &&
-              spanInfo.pickupDate.getTime() !== spanInfo.deliveryDate.getTime();
-            
-            const needsDeliveryMask = spanInfo.deliveryInMonth && 
-              spanInfo.deliveryDate.getTime() === spanInfo.loadEndDate.getTime() &&
-              spanInfo.pickupDate.getTime() !== spanInfo.deliveryDate.getTime();
-            
-            // Calculate clip-path for pickup/delivery restrictions
-            // Clip-path coordinates are relative to the bar element itself (0-100% of bar width)
-            let clipPath = null;
-            
-            // Handle same-day pickup and delivery
-            const isSameDay = spanInfo.pickupInMonth && spanInfo.deliveryInMonth && 
-              spanInfo.pickupDate.getTime() === spanInfo.deliveryDate.getTime();
-            
-            if (!isSameDay && (needsPickupMask || needsDeliveryMask)) {
-              const totalDays = spanInfo.spanDays;
-              
-              // Calculate what portion of the bar each day represents
-              const dayPortionPercent = 100 / totalDays; // Each day is this % of total bar width
-              
-              // Calculate start and end X positions
-              let startX = 0;
-              let endX = 100;
-              
-              if (needsPickupMask) {
-                // Start from right 50% of first day
-                startX = 0.5 * dayPortionPercent;
-              }
-              
-              if (needsDeliveryMask) {
-                // End at left 50% of last day
-                endX = 100 - (0.5 * dayPortionPercent);
-              }
-              
-              // Create a rectangle polygon: top-left, top-right, bottom-right, bottom-left
-              clipPath = `polygon(${startX}% 0%, ${endX}% 0%, ${endX}% 100%, ${startX}% 100%)`;
-            }
-            
-            return (
-              <div
-                key={load._id}
-                className="load-bar-spanning"
-                style={{
-                  position: 'absolute',
-                  left: `${leftPercent}%`,
-                  width: `${widthPercent}%`,
-                  top: `${topPx}px`,
-                  backgroundColor: color,
-                  zIndex: 1 + lane,
-                  clipPath: clipPath || 'none'
-                }}
-                title={`${load.load_number} - ${driverName}\n${formatDate(load.pickup_date)} to ${formatDate(load.delivery_date)}\n${load.pickup_city}, ${load.pickup_state} → ${load.delivery_city}, ${load.delivery_state}`}
-              >
-                <span className="load-label">
-                  {load.load_number}
-                </span>
-              </div>
-            );
+            if (!spanInfo.isVisible) return [];
+
+            const driverKey = driverId || 'unassigned';
+            const rowIdx = driverIndexByKey.get(driverKey) ?? 0;
+
+            const segments = getLoadWeekSegments(spanInfo).map((seg) => {
+              const leftPercent = (seg.startCol / 7) * 100;
+              const widthPercent = (seg.dayCount / 7) * 100;
+              const topPx =
+                seg.weekRow * dynamicDayHeight +
+                dayNumberHeight +
+                topOffset +
+                rowIdx * laneHeight;
+
+              const showLabel = seg.isFirstSegment;
+
+              return (
+                <div
+                  key={`${load._id}-${seg.weekRow}-${seg.startCol}`}
+                  className="load-bar-spanning"
+                  style={{
+                    position: 'absolute',
+                    left: `${leftPercent}%`,
+                    width: `${widthPercent}%`,
+                    top: `${topPx}px`,
+                    backgroundColor: color,
+                    zIndex: 10,
+                    clipPath: seg.clipPath || 'none'
+                  }}
+                  title={`${load.load_number} - ${driverName}\n${formatDate(load.pickup_date)} to ${formatDate(load.delivery_date)}\n${load.pickup_city}, ${load.pickup_state} → ${load.delivery_city}, ${load.delivery_state}`}
+                >
+                  {showLabel && (
+                    <span className="load-label">
+                      {load.load_number}
+                    </span>
+                  )}
+                </div>
+              );
+            });
+
+            return segments;
           })}
         </div>
       </div>
