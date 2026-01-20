@@ -157,19 +157,17 @@ router.get('/grouped', async (req, res) => {
       delete query.cancelled;
     }
     
-    // Always exclude invoiced loads from grouped loads list unless explicitly requested
-    // Invoiced loads should only appear in the /loads/invoiced endpoint
-    // Only exclude loads where invoiced is explicitly true
+    // Include invoiced loads by default (for calendar view)
+    // Only filter if explicitly requested
     if (invoiced !== undefined) {
       if (invoiced === 'true') {
-        // User explicitly wants invoiced loads
+        // User explicitly wants only invoiced loads
         query.invoiced = true;
-      } else {
+      } else if (invoiced === 'false') {
         // User explicitly doesn't want invoiced loads
         query.invoiced = { $ne: true };
       }
-    } else {
-      query.invoiced = { $ne: true }; // Exclude only loads where invoiced is true
+      // If invoiced is any other value, include all loads
     }
 
     // Ensure conflict flags are up-to-date on refresh (informational only; never blocks).

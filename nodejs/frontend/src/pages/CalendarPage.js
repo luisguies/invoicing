@@ -101,8 +101,14 @@ const CalendarPage = () => {
     return loads.filter(load => {
       if (!load.pickup_date || !load.delivery_date) return false;
       
-      const pickup = new Date(load.pickup_date);
-      const delivery = new Date(load.delivery_date);
+      // Parse dates in local timezone to avoid timezone shift issues
+      const pickupStr = load.pickup_date.split('T')[0];
+      const deliveryStr = load.delivery_date.split('T')[0];
+      const [pYear, pMonth, pDay] = pickupStr.split('-').map(Number);
+      const [dYear, dMonth, dDay] = deliveryStr.split('-').map(Number);
+      
+      const pickup = new Date(pYear, pMonth - 1, pDay);
+      const delivery = new Date(dYear, dMonth - 1, dDay);
       const checkDate = new Date(date);
       
       // Reset time to midnight for comparison
@@ -115,11 +121,14 @@ const CalendarPage = () => {
   };
 
   const getLoadSpanInfo = (load) => {
-    const pickup = new Date(load.pickup_date);
-    const delivery = new Date(load.delivery_date);
+    // Parse dates in local timezone to avoid timezone shift issues
+    const pickupStr = load.pickup_date.split('T')[0];
+    const deliveryStr = load.delivery_date.split('T')[0];
+    const [pYear, pMonth, pDay] = pickupStr.split('-').map(Number);
+    const [dYear, dMonth, dDay] = deliveryStr.split('-').map(Number);
     
-    pickup.setHours(0, 0, 0, 0);
-    delivery.setHours(0, 0, 0, 0);
+    const pickup = new Date(pYear, pMonth - 1, pDay);
+    const delivery = new Date(dYear, dMonth - 1, dDay);
     
     const { year, month, startingDayOfWeek } = getDaysInMonth(currentDate);
     const firstDay = new Date(year, month, 1);
