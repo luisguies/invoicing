@@ -88,60 +88,51 @@ const CalendarPage = () => {
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
+    const firstDay = new Date(Date.UTC(year, month, 1));
+    const lastDay = new Date(Date.UTC(year, month + 1, 0));
+    const daysInMonth = lastDay.getUTCDate();
+    const startingDayOfWeek = firstDay.getUTCDay();
     
     return { daysInMonth, startingDayOfWeek, year, month };
   };
 
   const getLoadsForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
     return loads.filter(load => {
       if (!load.pickup_date || !load.delivery_date) return false;
       
-      // Parse dates in local timezone to avoid timezone shift issues
+      // Parse everything as UTC for consistent comparison
       const pickupStr = load.pickup_date.split('T')[0];
       const deliveryStr = load.delivery_date.split('T')[0];
-      const [pYear, pMonth, pDay] = pickupStr.split('-').map(Number);
-      const [dYear, dMonth, dDay] = deliveryStr.split('-').map(Number);
+      const [pY, pM, pD] = pickupStr.split('-').map(Number);
+      const [dY, dM, dD] = deliveryStr.split('-').map(Number);
       
-      const pickup = new Date(pYear, pMonth - 1, pDay);
-      const delivery = new Date(dYear, dMonth - 1, dDay);
-      const checkDate = new Date(date);
+      const pickup = new Date(Date.UTC(pY, pM - 1, pD));
+      const delivery = new Date(Date.UTC(dY, dM - 1, dD));
       
-      // Reset time to midnight for comparison
-      pickup.setHours(0, 0, 0, 0);
-      delivery.setHours(0, 0, 0, 0);
-      checkDate.setHours(0, 0, 0, 0);
+      // Create UTC date for the check date
+      const checkDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
       
       return checkDate >= pickup && checkDate <= delivery;
     });
   };
 
   const getLoadSpanInfo = (load) => {
-    // Parse dates in local timezone to avoid timezone shift issues
+    // Parse everything as UTC to avoid timezone issues
     const pickupStr = load.pickup_date.split('T')[0];
     const deliveryStr = load.delivery_date.split('T')[0];
-    const [pYear, pMonth, pDay] = pickupStr.split('-').map(Number);
-    const [dYear, dMonth, dDay] = deliveryStr.split('-').map(Number);
     
-    const pickup = new Date(pYear, pMonth - 1, pDay);
-    const delivery = new Date(dYear, dMonth - 1, dDay);
+    const [pY, pM, pD] = pickupStr.split('-').map(Number);
+    const [dY, dM, dD] = deliveryStr.split('-').map(Number);
+    const pickup = new Date(Date.UTC(pY, pM - 1, pD));
+    const delivery = new Date(Date.UTC(dY, dM - 1, dD));
     
     const { year, month, startingDayOfWeek } = getDaysInMonth(currentDate);
-    const firstDay = new Date(year, month, 1);
-    firstDay.setHours(0, 0, 0, 0);
-    const lastDayOfMonth = new Date(year, month + 1, 0);
-    lastDayOfMonth.setHours(0, 0, 0, 0);
+    const firstDay = new Date(Date.UTC(year, month, 1));
+    const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0));
     
     // Calculate load start and end relative to month start
     const loadStart = pickup >= firstDay ? pickup : firstDay;
     const loadEnd = delivery <= lastDayOfMonth ? delivery : lastDayOfMonth;
-    
-    loadStart.setHours(0, 0, 0, 0);
-    loadEnd.setHours(0, 0, 0, 0);
     
     // Calculate which day of the calendar grid (including empty cells at start)
     const loadStartDay = Math.floor((loadStart - firstDay) / (1000 * 60 * 60 * 24));
@@ -259,9 +250,9 @@ const CalendarPage = () => {
     days.push(null);
   }
   
-  // Add cells for each day of the month
+  // Add cells for each day of the month (using UTC to match load dates)
   for (let day = 1; day <= daysInMonth; day++) {
-    days.push(new Date(year, month, day));
+    days.push(new Date(Date.UTC(year, month, day)));
   }
 
   // Pad trailing cells so the last week is complete (helps overlay math).
@@ -361,7 +352,9 @@ const CalendarPage = () => {
               return <div key={`empty-${index}`} className="calendar-day empty"></div>;
             }
             
-            const isToday = date.toDateString() === new Date().toDateString();
+            const today = new Date();
+            const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+            const isToday = date.getTime() === todayUTC.getTime();
             
             return (
               <div 
@@ -369,7 +362,7 @@ const CalendarPage = () => {
                 className={`calendar-day ${isToday ? 'today' : ''}`}
                 style={{ minHeight: `${dynamicDayHeight}px` }}
               >
-                <div className="day-number">{date.getDate()}</div>
+                <div className="day-number">{date.getUTCDate()}</div>
                 <div className="day-loads">
                   <div className="day-divider"></div>
                 </div>
