@@ -46,7 +46,7 @@ const CalendarPage = () => {
       groups.forEach(group => {
         if (group.loads && Array.isArray(group.loads)) {
           group.loads.forEach(load => {
-            if (!load.cancelled && !load.invoiced) {
+            if (!load.cancelled) {
               allLoads.push(load);
             }
           });
