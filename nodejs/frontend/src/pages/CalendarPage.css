@@ -203,7 +203,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   pointer-events: none;
-  z-index: 5;
+  z-index: 10;
 }
 
 .load-bar {
@@ -216,6 +216,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-align: center;
   min-height: 18px;
   display: flex;
   align-items: center;
