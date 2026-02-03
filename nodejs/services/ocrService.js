@@ -93,9 +93,34 @@ async function checkHealth() {
   }
 }
 
+/**
+ * Extract structured data from an old invoice PDF (carrier, dates, driver sections, load lines).
+ * @param {string} filePath - Absolute path to PDF (must be readable by Python service, e.g. /app/uploads/old-invoices/xxx.pdf)
+ * @returns {Promise<Object>} Extracted invoice data (carrierName, invoiceNumber, groups, etc.)
+ */
+async function extractOldInvoice(filePath) {
+  try {
+    const response = await axios.post(
+      `${PYTHON_SERVICE_URL}/extract-old-invoice`,
+      { file_path: filePath },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
+    );
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.error || 'Extract failed');
+  } catch (error) {
+    if (error.response && error.response.data && error.response.data.error) {
+      throw new Error(error.response.data.error);
+    }
+    throw error;
+  }
+}
+
 module.exports = {
   processPDF,
   processPDFBuffer,
-  checkHealth
+  checkHealth,
+  extractOldInvoice
 };
 

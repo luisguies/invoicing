@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Navigation from './components/Navigation';
 import LoginPage from './pages/LoginPage';
 import UploadPage from './pages/UploadPage';
+import UploadOldInvoicesPage from './pages/UploadOldInvoicesPage';
 import ListPage from './pages/ListPage';
 import CreateLoadPage from './pages/CreateLoadPage';
 import PrintPage from './pages/PrintPage';
@@ -45,6 +46,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<Navigate to="/upload" replace />} />
                 <Route path="/upload" element={<UploadPage />} />
+                <Route path="/upload-old-invoices" element={<UploadOldInvoicesPage />} />
                 <Route path="/list" element={<ListPage />} />
                 <Route path="/loads/new" element={<CreateLoadPage />} />
                 <Route path="/tools/load-invoice-creator" element={<LoadInvoiceCreatorPage />} />

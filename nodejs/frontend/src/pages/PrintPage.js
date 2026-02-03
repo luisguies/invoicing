@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInvoices, downloadInvoicePDF, getInvoice, deleteInvoice } from '../services/api';
+import { getInvoices, downloadInvoicePDF, getInvoice, deleteInvoice, getInvoicePDFUrl } from '../services/api';
 import { formatDate } from '../utils/dateUtils';
 import PDFViewer from '../components/PDFViewer';
 import './PrintPage.css';
@@ -59,6 +59,8 @@ const calculateEndingMonday = (invoice) => {
   return endingMonday;
 };
 
+const INVOICES_PER_CARRIER = 10;
+
 const PrintPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,21 +68,42 @@ const PrintPage = () => {
   const [deleting, setDeleting] = useState(null);
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
+  const [carrierSearch, setCarrierSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [expandedCarriers, setExpandedCarriers] = useState(new Set());
 
-  useEffect(() => {
-    loadInvoices();
-  }, []);
-
-  const loadInvoices = async () => {
+  const loadInvoices = async (filters = {}) => {
     setLoading(true);
     try {
-      const data = await getInvoices();
+      const data = await getInvoices(filters);
       setInvoices(data);
     } catch (error) {
       alert('Failed to load invoices: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadInvoices();
+  }, []);
+
+  const handleSearch = () => {
+    const filters = {};
+    if (carrierSearch.trim()) filters.carrier = carrierSearch.trim();
+    if (dateFrom) filters.dateFrom = dateFrom;
+    if (dateTo) filters.dateTo = dateTo;
+    loadInvoices(filters);
+  };
+
+  const toggleCarrierExpand = (company) => {
+    setExpandedCarriers((prev) => {
+      const next = new Set(prev);
+      if (next.has(company)) next.delete(company);
+      else next.add(company);
+      return next;
+    });
   };
 
   const handleDownload = async (invoiceId) => {
@@ -108,8 +131,12 @@ const PrintPage = () => {
         handleCloseViewer();
       }
 
-      // Refresh list
-      await loadInvoices();
+      // Refresh list (keep current search filters)
+      const filters = {};
+      if (carrierSearch.trim()) filters.carrier = carrierSearch.trim();
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      await loadInvoices(filters);
     } catch (error) {
       alert('Failed to delete invoice: ' + (error.response?.data?.error || error.message));
     } finally {
@@ -120,9 +147,7 @@ const PrintPage = () => {
   const handleView = async (invoiceId) => {
     try {
       const invoice = await getInvoice(invoiceId);
-      // Create blob URL for PDF viewing
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiUrl}/api/invoices/${invoiceId}/pdf`);
+      const response = await fetch(getInvoicePDFUrl(invoiceId), { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch PDF');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -141,18 +166,15 @@ const PrintPage = () => {
     setPdfUrl(null);
   };
 
-  // Helper function to get carrier name from invoice (the billTo name)
+  // Helper function to get carrier name from invoice (carrier_name for old uploads, else billTo/loads)
   const getCarrierName = (invoice) => {
-    // Use the billTo name, which is the carrier the invoice is billed to
-    if (invoice.billTo && invoice.billTo.name) {
-      return invoice.billTo.name;
-    }
-    // Fallback: try to get from first load's carrier if billTo is not set
+    if (invoice.carrier_name) return invoice.carrier_name;
+    if (invoice.billTo && invoice.billTo.name) return invoice.billTo.name;
     if (invoice.load_ids && invoice.load_ids.length > 0) {
       const firstLoad = invoice.load_ids[0];
       if (firstLoad && firstLoad.carrier_id) {
-        return typeof firstLoad.carrier_id === 'object' 
-          ? firstLoad.carrier_id.name 
+        return typeof firstLoad.carrier_id === 'object'
+          ? firstLoad.carrier_id.name
           : 'Unknown Carrier';
       }
     }
@@ -214,68 +236,125 @@ const PrintPage = () => {
   return (
     <div className="print-page">
       <div className="page-header">
-        <h2>Generated Invoices</h2>
-        <button onClick={loadInvoices} className="refresh-btn">Refresh</button>
+        <h2>Invoices</h2>
+        <button
+          onClick={() => {
+            const filters = {};
+            if (carrierSearch.trim()) filters.carrier = carrierSearch.trim();
+            if (dateFrom) filters.dateFrom = dateFrom;
+            if (dateTo) filters.dateTo = dateTo;
+            loadInvoices(filters);
+          }}
+          className="refresh-btn"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="invoice-search-bar">
+        <input
+          type="text"
+          placeholder="Search by carrier..."
+          value={carrierSearch}
+          onChange={(e) => setCarrierSearch(e.target.value)}
+          className="search-input carrier-input"
+        />
+        <input
+          type="date"
+          placeholder="From date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="search-input date-input"
+        />
+        <input
+          type="date"
+          placeholder="To date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="search-input date-input"
+        />
+        <button onClick={handleSearch} className="search-btn">Search</button>
       </div>
 
       {invoices.length === 0 ? (
         <div className="no-invoices">
-          <p>No invoices have been generated yet.</p>
-          <p>Go to the Loads page to generate invoices.</p>
+          <p>No invoices found.</p>
+          <p>Generate invoices from Loads, or upload old invoices from Upload Old Invoices.</p>
         </div>
       ) : (
         <div className="invoices-list">
-          {groupInvoicesByCompany(invoices).map(({ company, invoices: companyInvoices }) => (
-            <div key={company} className="invoice-company-group">
-              <h3 className="company-header">{company}</h3>
-              <div className="company-invoices">
-                {companyInvoices.map((invoice) => (
-                  <div key={invoice._id} className="invoice-card">
-                    <div className="invoice-header">
-                      <h4>{getInvoiceLabel(invoice)}</h4>
-                      <span className="invoice-date">
-                        Ending: {formatDate(getInvoiceDate(invoice))}
-                      </span>
-                    </div>
-                    <div className="invoice-details">
-                      <p>
-                        <strong>Loads:</strong> {invoice.load_ids?.length || 0}
-                      </p>
-                      <p>
-                        <strong>Total Amount:</strong> $
-                        {(typeof invoice.total === 'number'
-                          ? invoice.total
-                          : (invoice.subtotal || 0)
-                        ).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="invoice-actions">
-                      <button
-                        className="view-btn"
-                        onClick={() => handleView(invoice._id)}
-                      >
-                        View PDF
-                      </button>
-                      <button
-                        className="download-btn"
-                        onClick={() => handleDownload(invoice._id)}
-                        disabled={downloading === invoice._id}
-                      >
-                        {downloading === invoice._id ? 'Downloading...' : 'Download PDF'}
-                      </button>
-                      <button
-                        className="delete-btn"
-                        onClick={() => handleDelete(invoice._id)}
-                        disabled={deleting === invoice._id}
-                      >
-                        {deleting === invoice._id ? 'Deleting...' : 'Delete'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+          {groupInvoicesByCompany(invoices).map(({ company, invoices: companyInvoices }) => {
+            const isExpanded = expandedCarriers.has(company);
+            const visible = isExpanded ? companyInvoices : companyInvoices.slice(0, INVOICES_PER_CARRIER);
+            const hasMore = companyInvoices.length > INVOICES_PER_CARRIER;
+            return (
+              <div key={company} className="invoice-company-group">
+                <h3 className="company-header">{company}</h3>
+                <div className="invoice-table-wrap">
+                  <table className="invoice-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Invoice #</th>
+                        <th>Loads</th>
+                        <th>Total</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visible.map((invoice) => (
+                        <tr key={invoice._id}>
+                          <td>{formatDate(getInvoiceDate(invoice))}</td>
+                          <td>{invoice.invoice_number}</td>
+                          <td>{invoice.load_ids?.length ?? 0}</td>
+                          <td>
+                            $
+                            {(typeof invoice.total === 'number'
+                              ? invoice.total
+                              : (invoice.subtotal || 0)
+                            ).toFixed(2)}
+                          </td>
+                          <td className="invoice-actions-cell">
+                            <button
+                              className="view-btn table-btn"
+                              onClick={() => handleView(invoice._id)}
+                            >
+                              View
+                            </button>
+                            <button
+                              className="download-btn table-btn"
+                              onClick={() => handleDownload(invoice._id)}
+                              disabled={downloading === invoice._id}
+                            >
+                              {downloading === invoice._id ? '…' : 'Download'}
+                            </button>
+                            <button
+                              className="delete-btn table-btn"
+                              onClick={() => handleDelete(invoice._id)}
+                              disabled={deleting === invoice._id}
+                            >
+                              {deleting === invoice._id ? '…' : 'Delete'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {hasMore && (
+                    <button
+                      type="button"
+                      className="show-more-btn"
+                      onClick={() => toggleCarrierExpand(company)}
+                    >
+                      {isExpanded
+                        ? `Show less`
+                        : `Show more (${companyInvoices.length - INVOICES_PER_CARRIER} more)`}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

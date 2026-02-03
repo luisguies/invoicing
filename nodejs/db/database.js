@@ -398,7 +398,13 @@ const invoiceSchema = new mongoose.Schema({
       ratePercent: String,
       amount: String
     }]
-  }]
+  }],
+  // For uploaded old invoices (no load_ids): carrier name parsed from filename
+  carrier_name: {
+    type: String,
+    trim: true,
+    default: null
+  }
 });
 
 // Create models

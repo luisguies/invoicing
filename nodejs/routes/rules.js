@@ -2,12 +2,27 @@ const express = require('express');
 const router = express.Router();
 const { InvoiceRule } = require('../db/database');
 
-// Get all rules
+// Get all rules (ensure "default" rule exists for dynamic date range)
 router.get('/', async (req, res) => {
   try {
-    const rules = await InvoiceRule.find()
+    let rules = await InvoiceRule.find()
       .populate('carrier_id', 'name aliases')
       .sort({ created_at: -1 });
+
+    const hasDefault = rules.some(r => r.rule_name && r.rule_name.toLowerCase() === 'default');
+    if (!hasDefault) {
+      const defaultRule = new InvoiceRule({
+        rule_name: 'default',
+        earliest_pickup_date: null,
+        latest_delivery_date: null,
+        carrier_id: null
+      });
+      await defaultRule.save();
+      const populated = await InvoiceRule.findById(defaultRule._id)
+        .populate('carrier_id', 'name aliases');
+      rules = [populated, ...rules];
+    }
+
     res.json(rules);
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -213,11 +213,15 @@ const CalendarPage = () => {
         clipPath = `polygon(${startX}% 0%, ${endX}% 0%, ${endX}% 100%, ${startX}% 100%)`;
       }
 
+      const centerGrid = spanInfo.gridStart + Math.floor((spanInfo.spanDays - 1) / 2);
+      const isCenterSegment = centerGrid >= segGridStart && centerGrid <= segGridEnd;
+
       segments.push({
         weekRow,
         startCol,
         dayCount,
         isFirstSegment,
+        isCenterSegment,
         clipPath
       });
     }
@@ -370,10 +374,9 @@ const CalendarPage = () => {
             );
           })}
 
-          {/* Driver row labels (shown in Sunday column for each week) */}
+          {/* Driver row labels: overlay over the bars for each row (full row width, on top) */}
           {(() => {
             const weekCount = Math.ceil(days.length / 7);
-            const sundayColWidth = (1 / 7) * 100;
             const labels = [];
 
             for (let weekRow = 0; weekRow < weekCount; weekRow += 1) {
@@ -392,7 +395,7 @@ const CalendarPage = () => {
                     style={{
                       position: 'absolute',
                       left: '0%',
-                      width: `${sundayColWidth}%`,
+                      width: '100%',
                       top: `${topPx}px`,
                       height: `${laneHeight - 2}px`
                     }}
@@ -432,7 +435,7 @@ const CalendarPage = () => {
                 topOffset +
                 rowIdx * laneHeight;
 
-              const showLabel = seg.isFirstSegment;
+              const showLabel = seg.isCenterSegment;
 
               return (
                 <div

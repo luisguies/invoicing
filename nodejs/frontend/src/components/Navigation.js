@@ -47,6 +47,12 @@ const Navigation = () => {
             Invoices
           </Link>
           <Link
+            to="/upload-old-invoices"
+            className={location.pathname === '/upload-old-invoices' ? 'active' : ''}
+          >
+            Upload Old Invoices
+          </Link>
+          <Link
             to="/invoiced-loads"
             className={location.pathname === '/invoiced-loads' ? 'active' : ''}
           >

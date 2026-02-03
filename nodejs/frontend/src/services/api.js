@@ -209,8 +209,42 @@ export const deleteRule = async (id) => {
 };
 
 // Invoices API
-export const getInvoices = async () => {
-  const response = await api.get('/invoices');
+export const getInvoices = async (filters = {}) => {
+  const params = {};
+  if (filters.carrier != null && String(filters.carrier).trim()) params.carrier = filters.carrier.trim();
+  if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+  if (filters.dateTo) params.dateTo = filters.dateTo;
+  const response = await api.get('/invoices', { params });
+  return response.data;
+};
+
+export const uploadOldInvoice = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/invoices/upload-old', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+export const extractOldInvoice = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await api.post('/invoices/extract-old-invoice', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 90000
+  });
+  return response.data;
+};
+
+export const saveExtractedInvoice = async (file, data) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('data', JSON.stringify(data));
+  const response = await api.post('/invoices/save-extracted', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000
+  });
   return response.data;
 };
 
