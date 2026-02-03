@@ -21,7 +21,8 @@ const ListPage = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await getLoadsGrouped();
+      // Loads page: only show loads that have NOT been invoiced
+      const data = await getLoadsGrouped({ invoiced: 'false' });
       setGroups(data);
     } catch (error) {
       alert('Failed to load loads: ' + (error.response?.data?.error || error.message));

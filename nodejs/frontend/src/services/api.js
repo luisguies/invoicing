@@ -72,8 +72,8 @@ export const createLoad = async (loadData) => {
   return response.data;
 };
 
-export const getLoadsGrouped = async () => {
-  const response = await api.get('/loads/grouped');
+export const getLoadsGrouped = async (params = {}) => {
+  const response = await api.get('/loads/grouped', { params });
   return response.data;
 };
 

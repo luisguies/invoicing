@@ -38,7 +38,7 @@ const CalendarPage = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Load drivers and loads in parallel
+      // Load drivers and loads in parallel (calendar shows both invoiced and non-invoiced loads)
       const [groups, drivers] = await Promise.all([getLoadsGrouped(), getDrivers()]);
       
       // Flatten groups into a single array of loads
