@@ -82,6 +82,14 @@ export const searchInvoicedLoads = async (filters = {}) => {
   return response.data;
 };
 
+export const getLoadsLog = async (carrierId, dateFrom, dateTo) => {
+  const params = { carrier_id: carrierId };
+  if (dateFrom) params.date_from = dateFrom;
+  if (dateTo) params.date_to = dateTo;
+  const response = await api.get('/loads/log', { params });
+  return response.data;
+};
+
 export const getLoad = async (id) => {
   const response = await api.get(`/loads/${id}`);
   return response.data;

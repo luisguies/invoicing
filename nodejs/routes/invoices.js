@@ -12,15 +12,16 @@ const path = require('path');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-// Filename format: "{Carrier Name} Invoice YYYY-MM-DD.pdf"
-const OLD_INVOICE_FILENAME_REGEX = /^(.+)\s+Invoice\s+(\d{4}-\d{2}-\d{2})\.pdf$/i;
+// Filename format: "{Carrier Name} Invoice YYYY-MM-DD.pdf" or "... YYYY-MM-DD (PERSON NAME).pdf"
+const OLD_INVOICE_FILENAME_REGEX = /^(.+)\s+Invoice\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\.pdf$/i;
 
 function parseOldInvoiceFilename(filename) {
   const base = path.basename(filename, path.extname(filename)) + '.pdf';
   const match = base.match(OLD_INVOICE_FILENAME_REGEX);
   if (!match) return null;
+  const carrierName = match[1].trim();
   return {
-    carrierName: match[1].trim(),
+    carrierName,
     dateStr: match[2],
     date: new Date(match[2] + 'T00:00:00.000Z')
   };

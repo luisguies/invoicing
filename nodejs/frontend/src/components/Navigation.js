@@ -65,6 +65,12 @@ const Navigation = () => {
             Calendar
           </Link>
           <Link
+            to="/company-load-log"
+            className={location.pathname === '/company-load-log' ? 'active' : ''}
+          >
+            Company Load Log
+          </Link>
+          <Link
             to="/tools/load-invoice-creator"
             className={location.pathname === '/tools/load-invoice-creator' ? 'active' : ''}
           >

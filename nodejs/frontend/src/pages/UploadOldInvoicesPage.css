@@ -80,6 +80,63 @@
   color: #721c24;
 }
 
+.parsed-table .amount-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.parsed-table .amount-value {
+  font-weight: 600;
+  color: #155724;
+}
+
+.parsed-table .amount-error {
+  color: #721c24;
+  font-size: 0.85rem;
+}
+
+.parsed-table .amount-placeholder {
+  color: #adb5bd;
+}
+
+.extract-all-btn {
+  padding: 0.75rem 1.5rem;
+  background: #17a2b8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.extract-all-btn:hover:not(:disabled) {
+  background: #138496;
+}
+
+.extract-all-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.preview-amounts-btn {
+  padding: 0.6rem 1.25rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.preview-amounts-btn:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.preview-amounts-btn:disabled {
+  background: #adb5bd;
+  cursor: not-allowed;
+}
+
 .status-ok {
   color: #155724;
   font-weight: 500;
@@ -192,6 +249,44 @@
 /* Confirmation step */
 .upload-old-invoices-page.confirm-step {
   max-width: 100%;
+}
+
+.extracted-amounts-summary {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  background: #e8f4fd;
+  border: 1px solid #b8daff;
+  border-radius: 8px;
+}
+
+.extracted-amounts-summary h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+  color: #0c5460;
+}
+
+.amounts-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.amount-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.amount-item .amount-label {
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.amount-item .amount-value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #0c5460;
 }
 
 .confirm-form {
@@ -320,4 +415,77 @@
 .back-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+/* Batch review step */
+.upload-old-invoices-page.batch-review-step {
+  max-width: 1000px;
+}
+
+.batch-review-table-wrap {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.batch-review-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  overflow: hidden;
+}
+
+.batch-review-table th,
+.batch-review-table td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.batch-review-table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+}
+
+.batch-review-table th.num,
+.batch-review-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-review-table tbody tr.row-error {
+  background: #fff5f5;
+  color: #721c24;
+}
+
+.batch-review-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  align-items: center;
+}
+
+.batch-confirm-results {
+  margin-top: 1rem;
+}
+
+.batch-confirm-results .results-success {
+  margin: 0 0 0.5rem 0;
+  color: #155724;
+}
+
+.batch-confirm-results .results-fail {
+  margin: 0.5rem 0 0 0;
+  padding-left: 1.25rem;
+  color: #721c24;
+  font-size: 0.9rem;
+}
+
+.batch-confirm-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  align-items: center;
 }

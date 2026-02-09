@@ -236,6 +236,36 @@ router.get('/grouped', async (req, res) => {
   }
 });
 
+// Get loads log for a company between dates (all loads including invoiced)
+router.get('/log', async (req, res) => {
+  try {
+    const { carrier_id, date_from, date_to } = req.query;
+    if (!carrier_id) {
+      return res.status(400).json({ error: 'carrier_id is required' });
+    }
+    const query = { carrier_id };
+    if (date_from) {
+      const from = new Date(date_from);
+      from.setUTCHours(0, 0, 0, 0);
+      query.pickup_date = query.pickup_date || {};
+      query.pickup_date.$gte = from;
+    }
+    if (date_to) {
+      const to = new Date(date_to);
+      to.setUTCHours(23, 59, 59, 999);
+      query.pickup_date = query.pickup_date || {};
+      query.pickup_date.$lte = to;
+    }
+    const loads = await Load.find(query)
+      .populate('carrier_id', 'name aliases')
+      .populate('driver_id', 'name aliases')
+      .sort({ pickup_date: 1 });
+    res.json(loads);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get load by ID
 router.get('/:id', async (req, res) => {
   try {

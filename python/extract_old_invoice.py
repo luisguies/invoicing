@@ -228,15 +228,40 @@ def parse_driver_sections(text: str) -> List[Dict[str, Any]]:
     return groups
 
 
+def _is_valid_gemini_result(data: Optional[Dict[str, Any]]) -> bool:
+    """Return True if Gemini output has enough to use (carrier + groups or total)."""
+    if not data or not isinstance(data, dict):
+        return False
+    if not (data.get("carrierName") or (data.get("billTo") or {}).get("name")):
+        return False
+    groups = data.get("groups")
+    if isinstance(groups, list) and len(groups) > 0:
+        return True
+    if data.get("total") is not None or data.get("balanceDue") is not None:
+        return True
+    return False
+
+
 def extract_old_invoice(pdf_path: str) -> Optional[Dict[str, Any]]:
     """
     Extract full invoice structure from an old invoice PDF.
+    Uses Google Gemini API first (if GEMINI_API_KEY is set), then falls back to regex parsing.
     Returns dict with: carrierName, invoiceNumber, invoiceDate, dueDate,
     balanceDue, subtotal, postage, total, billTo, payableTo, groups (driver sections with lines).
     """
     text = extract_text_from_pdf(pdf_path)
     if not text or len(text.strip()) < 50:
         return None
+
+    # Try Gemini first (same pattern as load OCR)
+    if os.getenv("GEMINI_API_KEY"):
+        try:
+            import gemini_extract_old_invoice as geo
+            gemini_result = geo.extract_old_invoice_with_gemini(text)
+            if _is_valid_gemini_result(gemini_result):
+                return gemini_result
+        except Exception as e:
+            print(f"Gemini extraction skipped: {e}")
 
     header = parse_header(text)
     groups = parse_driver_sections(text)

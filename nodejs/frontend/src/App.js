@@ -11,6 +11,7 @@ import SettingsPage from './pages/SettingsPage';
 import LoadInvoiceCreatorPage from './pages/LoadInvoiceCreatorPage';
 import InvoicedLoadsPage from './pages/InvoicedLoadsPage';
 import CalendarPage from './pages/CalendarPage';
+import CompanyLoadLogPage from './pages/CompanyLoadLogPage';
 import { checkAuth } from './services/api';
 import './App.css';
 
@@ -52,6 +53,7 @@ function App() {
                 <Route path="/tools/load-invoice-creator" element={<LoadInvoiceCreatorPage />} />
                 <Route path="/invoiced-loads" element={<InvoicedLoadsPage />} />
                 <Route path="/calendar" element={<CalendarPage />} />
+                <Route path="/company-load-log" element={<CompanyLoadLogPage />} />
                 <Route path="/print" element={<PrintPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
