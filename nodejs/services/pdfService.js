@@ -105,6 +105,7 @@ async function generateInvoicePDF(loadIds, invoiceData) {
     subtotal += amount;
 
     grouped[driverId].lines.push({
+      loadNumber: (load.load_number || '').toString(),
       pickupDate: formatDate(load.pickup_date),
       deliveryDate: formatDate(load.delivery_date),
       originCityState: `${load.pickup_city || ''}, ${load.pickup_state || ''}`,

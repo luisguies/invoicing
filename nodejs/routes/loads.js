@@ -90,12 +90,16 @@ router.get('/', async (req, res) => {
 // Search invoiced loads
 router.get('/invoiced', async (req, res) => {
   try {
-    const { carrier_id, load_number, driver_id, pickup_date_from, delivery_date_to } = req.query;
+    const { carrier_id, load_number, driver_id, pickup_date_from, delivery_date_to, sub_dispatcher_id } = req.query;
     
     const query = { invoiced: true }; // Only search invoiced loads
     
     if (carrier_id) {
       query.carrier_id = carrier_id;
+    }
+    
+    if (sub_dispatcher_id) {
+      query.sub_dispatcher_id = sub_dispatcher_id;
     }
     
     if (load_number) {
@@ -132,6 +136,7 @@ router.get('/invoiced', async (req, res) => {
     const loads = await Load.find(query)
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
+      .populate('sub_dispatcher_id', 'name parent_id')
       .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
       .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
       .populate('duplicate_conflict_ids', 'load_number pickup_date delivery_date')
@@ -658,6 +663,34 @@ router.patch('/:id/invoiced', async (req, res) => {
     const populatedLoad = await Load.findById(load._id)
       .populate('carrier_id', 'name aliases')
       .populate('driver_id', 'name aliases')
+      .populate('sub_dispatcher_id', 'name parent_id')
+      .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
+      .populate('duplicate_conflict_ids', 'load_number pickup_date delivery_date');
+
+    res.json(populatedLoad);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Set load sub-dispatcher
+router.patch('/:id/sub-dispatcher', async (req, res) => {
+  try {
+    const { sub_dispatcher_id } = req.body;
+    
+    const load = await Load.findById(req.params.id);
+    if (!load) {
+      return res.status(404).json({ error: 'Load not found' });
+    }
+
+    load.sub_dispatcher_id = sub_dispatcher_id || null;
+    await load.save();
+
+    const populatedLoad = await Load.findById(load._id)
+      .populate('carrier_id', 'name aliases')
+      .populate('driver_id', 'name aliases')
+      .populate('sub_dispatcher_id', 'name parent_id')
       .populate('date_conflict_ids', 'load_number pickup_date delivery_date')
       .populate('driver_conflict_ids', 'load_number pickup_date delivery_date')
       .populate('duplicate_conflict_ids', 'load_number pickup_date delivery_date');

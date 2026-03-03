@@ -14,7 +14,8 @@ const DispatcherManager = () => {
       cityStateZip: '',
       phone: ''
     },
-    isActive: false
+    isActive: false,
+    parent_id: ''
   });
 
   useEffect(() => {
@@ -44,10 +45,14 @@ const DispatcherManager = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        parent_id: formData.parent_id || null
+      };
       if (editingDispatcher) {
-        await updateDispatcher(editingDispatcher._id, formData);
+        await updateDispatcher(editingDispatcher._id, payload);
       } else {
-        await createDispatcher(formData);
+        await createDispatcher(payload);
       }
       
       setShowForm(false);
@@ -59,7 +64,8 @@ const DispatcherManager = () => {
           cityStateZip: '',
           phone: ''
         },
-        isActive: false
+        isActive: false,
+        parent_id: ''
       });
       loadDispatchers();
       loadActiveDispatcher();
@@ -70,6 +76,7 @@ const DispatcherManager = () => {
 
   const handleEdit = (dispatcher) => {
     setEditingDispatcher(dispatcher);
+    const parentId = dispatcher.parent_id;
     setFormData({
       name: dispatcher.name || '',
       payableTo: dispatcher.payableTo || {
@@ -77,7 +84,8 @@ const DispatcherManager = () => {
         cityStateZip: '',
         phone: ''
       },
-      isActive: dispatcher.isActive || false
+      isActive: dispatcher.isActive || false,
+      parent_id: parentId ? (typeof parentId === 'object' ? parentId._id : parentId) : ''
     });
     setShowForm(true);
   };
@@ -117,17 +125,18 @@ const DispatcherManager = () => {
             setShowForm(!showForm);
             if (showForm) {
               setEditingDispatcher(null);
-              setFormData({
-                name: '',
-                payableTo: {
-                  name: '',
-                  cityStateZip: '',
-                  phone: ''
-                },
-                isActive: false
-              });
-            }
-          }} className="add-btn">
+        setFormData({
+        name: '',
+        payableTo: {
+          name: '',
+          cityStateZip: '',
+          phone: ''
+        },
+        isActive: false,
+        parent_id: ''
+      });
+    }
+  }} className="add-btn">
             {showForm ? 'Cancel' : '+ Add Dispatcher'}
           </button>
         </div>
@@ -143,6 +152,22 @@ const DispatcherManager = () => {
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
             />
+          </div>
+
+          <div className="form-group">
+            <label>Parent Dispatcher</label>
+            <select
+              value={formData.parent_id}
+              onChange={(e) => setFormData({ ...formData, parent_id: e.target.value })}
+            >
+              <option value="">None (main dispatcher)</option>
+              {dispatchers
+                .filter(d => !d.parent_id && (!editingDispatcher || d._id !== editingDispatcher._id))
+                .map(d => (
+                  <option key={d._id} value={d._id}>{d.name}</option>
+                ))}
+            </select>
+            <small>Leave as &quot;None&quot; for a main dispatcher; select one to create a sub-dispatcher.</small>
           </div>
 
           <div className="form-section">
@@ -204,28 +229,64 @@ const DispatcherManager = () => {
       )}
 
       <div className="dispatchers-list">
-        {dispatchers.map(dispatcher => (
-          <div key={dispatcher._id} className={`dispatcher-item ${dispatcher.isActive ? 'active' : ''}`}>
-            <div className="dispatcher-info">
-              <strong>{dispatcher.name}</strong>
-              {dispatcher.isActive && <span className="active-badge">Active</span>}
-              {dispatcher.payableTo && dispatcher.payableTo.name && (
-                <div className="payable-to-info">
-                  <small>Payable To: {dispatcher.payableTo.name}</small>
-                </div>
-              )}
-            </div>
-            <div className="dispatcher-actions">
-              {!dispatcher.isActive && (
-                <button onClick={() => handleActivate(dispatcher._id)} className="activate-btn">
-                  Activate
-                </button>
-              )}
-              <button onClick={() => handleEdit(dispatcher)} className="edit-btn">Edit</button>
-              <button onClick={() => handleDelete(dispatcher._id)} className="delete-btn">Delete</button>
-            </div>
-          </div>
-        ))}
+        {(() => {
+          const mainDispatchers = dispatchers.filter(d => !d.parent_id);
+          const subDispatchers = dispatchers.filter(d => d.parent_id);
+          const getMainId = (d) => (d.parent_id && (typeof d.parent_id === 'object' ? d.parent_id._id : d.parent_id)) || null;
+          return (
+            <>
+              {mainDispatchers.map(main => (
+                <React.Fragment key={main._id}>
+                  <div className={`dispatcher-item dispatcher-item-main ${main.isActive ? 'active' : ''}`}>
+                    <div className="dispatcher-info">
+                      <strong>{main.name}</strong>
+                      {main.isActive && <span className="active-badge">Active</span>}
+                      {main.payableTo && main.payableTo.name && (
+                        <div className="payable-to-info">
+                          <small>Payable To: {main.payableTo.name}</small>
+                        </div>
+                      )}
+                    </div>
+                    <div className="dispatcher-actions">
+                      {!main.isActive && (
+                        <button onClick={() => handleActivate(main._id)} className="activate-btn">
+                          Activate
+                        </button>
+                      )}
+                      <button onClick={() => handleEdit(main)} className="edit-btn">Edit</button>
+                      <button onClick={() => handleDelete(main._id)} className="delete-btn">Delete</button>
+                    </div>
+                  </div>
+                  {subDispatchers
+                    .filter(sub => getMainId(sub) && String(getMainId(sub)) === String(main._id))
+                    .map(sub => (
+                      <div key={sub._id} className={`dispatcher-item dispatcher-item-sub ${sub.isActive ? 'active' : ''}`}>
+                        <div className="dispatcher-info">
+                          <strong>{sub.name}</strong>
+                          <span className="sub-under">Under: {main.name}</span>
+                          {sub.isActive && <span className="active-badge">Active</span>}
+                          {sub.payableTo && sub.payableTo.name && (
+                            <div className="payable-to-info">
+                              <small>Payable To: {sub.payableTo.name}</small>
+                            </div>
+                          )}
+                        </div>
+                        <div className="dispatcher-actions">
+                          {!sub.isActive && (
+                            <button onClick={() => handleActivate(sub._id)} className="activate-btn">
+                              Activate
+                            </button>
+                          )}
+                          <button onClick={() => handleEdit(sub)} className="edit-btn">Edit</button>
+                          <button onClick={() => handleDelete(sub._id)} className="delete-btn">Delete</button>
+                        </div>
+                      </div>
+                    ))}
+                </React.Fragment>
+              ))}
+            </>
+          );
+        })()}
       </div>
     </div>
   );

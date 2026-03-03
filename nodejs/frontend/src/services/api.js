@@ -133,6 +133,13 @@ export const markLoadAsInvoiced = async (id, invoiced) => {
   return response.data;
 };
 
+export const patchLoadSubDispatcher = async (id, subDispatcherId) => {
+  const response = await api.patch(`/loads/${id}/sub-dispatcher`, {
+    sub_dispatcher_id: subDispatcherId || null
+  });
+  return response.data;
+};
+
 export const getLoadConflicts = async (id) => {
   const response = await api.get(`/loads/${id}/conflicts`);
   return response.data;

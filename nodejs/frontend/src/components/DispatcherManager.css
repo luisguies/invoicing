@@ -72,12 +72,20 @@
   font-weight: 500;
 }
 
-.form-group input[type="text"] {
+.form-group input[type="text"],
+.form-group select {
   width: 100%;
   padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
   box-sizing: border-box;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 4px;
+  color: #666;
+  font-size: 0.9em;
 }
 
 .form-group label input[type="checkbox"] {
@@ -135,6 +143,17 @@
 .dispatcher-item.active {
   border-color: #28a745;
   border-width: 2px;
+}
+
+.dispatcher-item-sub {
+  margin-left: 24px;
+  border-left: 3px solid #dee2e6;
+}
+
+.dispatcher-info .sub-under {
+  font-size: 0.9em;
+  color: #6c757d;
+  margin-left: 8px;
 }
 
 .dispatcher-info {

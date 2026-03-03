@@ -147,6 +147,7 @@
     <table class="tight">
       <thead>
         <tr>
+          <th class="nowrap">Load #</th>
           <th class="nowrap">Pickup Date</th>
           <th class="nowrap">Delivery Date</th>
           <th class="nowrap">Origin</th>
@@ -161,13 +162,14 @@
         <!-- GROUP EXAMPLE -->
         {{#each groups}}
           <tr class="group-row">
-            <td colspan="7">
+            <td colspan="8">
               <span class="group-name">{{this.groupLabel}}</span>
             </td>
           </tr>
 
           {{#each this.lines}}
           <tr>
+            <td class="nowrap">{{this.loadNumber}}</td>
             <td class="nowrap">{{this.pickupDate}}</td>
             <td class="nowrap">{{this.deliveryDate}}</td>
             <td class="nowrap">{{this.originCityState}}</td>

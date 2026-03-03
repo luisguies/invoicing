@@ -130,6 +130,11 @@ const loadSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Load'
   }],
+  sub_dispatcher_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Dispatcher',
+    default: null
+  },
   created_at: {
     type: Date,
     default: Date.now
@@ -310,6 +315,11 @@ const dispatcherSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: false
+  },
+  parent_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Dispatcher',
+    default: null
   },
   created_at: {
     type: Date,

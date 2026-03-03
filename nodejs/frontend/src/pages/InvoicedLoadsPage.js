@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { searchInvoicedLoads, getCarriers, getDrivers, markLoadAsInvoiced } from '../services/api';
+import { searchInvoicedLoads, getCarriers, getDrivers, getDispatchers, markLoadAsInvoiced, patchLoadSubDispatcher } from '../services/api';
 import { formatDate, formatDateInput } from '../utils/dateUtils';
 import './InvoicedLoadsPage.css';
 
@@ -8,10 +8,12 @@ const InvoicedLoadsPage = () => {
   const [loading, setLoading] = useState(false);
   const [carriers, setCarriers] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [dispatchers, setDispatchers] = useState([]);
   const [filters, setFilters] = useState({
     carrier_id: '',
     load_number: '',
     driver_id: '',
+    sub_dispatcher_id: '',
     pickup_date_from: '',
     delivery_date_to: ''
   });
@@ -19,6 +21,7 @@ const InvoicedLoadsPage = () => {
   useEffect(() => {
     loadCarriers();
     loadDrivers();
+    loadDispatchers();
     // Load all invoiced loads initially
     performSearch({});
   }, []);
@@ -41,6 +44,17 @@ const InvoicedLoadsPage = () => {
     }
   };
 
+  const loadDispatchers = async () => {
+    try {
+      const data = await getDispatchers();
+      setDispatchers(data || []);
+    } catch (error) {
+      console.error('Failed to load dispatchers:', error);
+    }
+  };
+
+  const subDispatchers = dispatchers.filter(d => d.parent_id);
+
   const performSearch = async (searchFilters = null) => {
     setLoading(true);
     try {
@@ -50,6 +64,7 @@ const InvoicedLoadsPage = () => {
       if (filtersToUse.carrier_id) cleanFilters.carrier_id = filtersToUse.carrier_id;
       if (filtersToUse.load_number) cleanFilters.load_number = filtersToUse.load_number;
       if (filtersToUse.driver_id) cleanFilters.driver_id = filtersToUse.driver_id;
+      if (filtersToUse.sub_dispatcher_id) cleanFilters.sub_dispatcher_id = filtersToUse.sub_dispatcher_id;
       if (filtersToUse.pickup_date_from) cleanFilters.pickup_date_from = filtersToUse.pickup_date_from;
       if (filtersToUse.delivery_date_to) cleanFilters.delivery_date_to = filtersToUse.delivery_date_to;
 
@@ -79,6 +94,7 @@ const InvoicedLoadsPage = () => {
       carrier_id: '',
       load_number: '',
       driver_id: '',
+      sub_dispatcher_id: '',
       pickup_date_from: '',
       delivery_date_to: ''
     };
@@ -97,6 +113,15 @@ const InvoicedLoadsPage = () => {
       setLoads(prevLoads => prevLoads.filter(load => load._id !== loadId));
     } catch (error) {
       alert('Failed to unmark load as invoiced: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const handleSubDispatcherChange = async (loadId, subDispatcherId) => {
+    try {
+      const updated = await patchLoadSubDispatcher(loadId, subDispatcherId || null);
+      setLoads(prev => prev.map(l => l._id === loadId ? updated : l));
+    } catch (error) {
+      alert('Failed to update sub-dispatcher: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -155,6 +180,22 @@ const InvoicedLoadsPage = () => {
           </div>
 
           <div className="search-field">
+            <label htmlFor="sub_dispatcher">Sub-dispatcher:</label>
+            <select
+              id="sub_dispatcher"
+              value={filters.sub_dispatcher_id}
+              onChange={(e) => handleFilterChange('sub_dispatcher_id', e.target.value)}
+            >
+              <option value="">All</option>
+              {subDispatchers.map(d => (
+                <option key={d._id} value={d._id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="search-field">
             <label htmlFor="pickup_date_from">Pickup Date From:</label>
             <input
               id="pickup_date_from"
@@ -194,6 +235,7 @@ const InvoicedLoadsPage = () => {
                 <th>Load #</th>
                 <th>Carrier</th>
                 <th>Driver</th>
+                <th>Sub-dispatcher</th>
                 <th>Pickup Date</th>
                 <th>Delivery Date</th>
                 <th>Origin</th>
@@ -203,27 +245,45 @@ const InvoicedLoadsPage = () => {
               </tr>
             </thead>
             <tbody>
-              {loads.map(load => (
-                <tr key={load._id}>
-                  <td>{load.load_number}</td>
-                  <td>{load.carrier_id?.name || 'N/A'}</td>
-                  <td>{load.driver_id?.name || 'N/A'}</td>
-                  <td>{formatDate(load.pickup_date)}</td>
-                  <td>{formatDate(load.delivery_date)}</td>
-                  <td>{load.pickup_city}, {load.pickup_state}</td>
-                  <td>{load.delivery_city}, {load.delivery_state}</td>
-                  <td>${Number(load.carrier_pay || 0).toFixed(2)}</td>
-                  <td>
-                    <button
-                      onClick={() => handleUnmarkAsInvoiced(load._id)}
-                      className="unmark-invoiced-btn"
-                      title="Remove from invoiced status"
-                    >
-                      Unmark as Invoiced
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {loads.map(load => {
+                const currentSubId = load.sub_dispatcher_id ? (typeof load.sub_dispatcher_id === 'object' ? load.sub_dispatcher_id._id : load.sub_dispatcher_id) : '';
+                return (
+                  <tr key={load._id}>
+                    <td>{load.load_number}</td>
+                    <td>{load.carrier_id?.name || 'N/A'}</td>
+                    <td>{load.driver_id?.name || 'N/A'}</td>
+                    <td>
+                      <select
+                        className="sub-dispatcher-select"
+                        value={currentSubId}
+                        onChange={(e) => handleSubDispatcherChange(load._id, e.target.value || null)}
+                        title="Assign or change sub-dispatcher"
+                      >
+                        <option value="">(None)</option>
+                        {subDispatchers.map(d => (
+                          <option key={d._id} value={d._id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>{formatDate(load.pickup_date)}</td>
+                    <td>{formatDate(load.delivery_date)}</td>
+                    <td>{load.pickup_city}, {load.pickup_state}</td>
+                    <td>{load.delivery_city}, {load.delivery_state}</td>
+                    <td>${Number(load.carrier_pay || 0).toFixed(2)}</td>
+                    <td>
+                      <button
+                        onClick={() => handleUnmarkAsInvoiced(load._id)}
+                        className="unmark-invoiced-btn"
+                        title="Remove from invoiced status"
+                      >
+                        Unmark as Invoiced
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <div className="results-count">

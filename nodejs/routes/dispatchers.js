@@ -38,10 +38,24 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Validate parent_id: if set, must reference a main dispatcher (parent_id null)
+async function validateParentId(parentId) {
+  if (!parentId) return;
+  const parent = await Dispatcher.findById(parentId);
+  if (!parent) {
+    throw new Error('Parent dispatcher not found');
+  }
+  if (parent.parent_id != null) {
+    throw new Error('Parent must be a main dispatcher (not a sub-dispatcher)');
+  }
+}
+
 // Create dispatcher
 router.post('/', async (req, res) => {
   try {
-    const { name, payableTo, isActive } = req.body;
+    const { name, payableTo, isActive, parent_id } = req.body;
+
+    await validateParentId(parent_id || null);
 
     // If setting as active, deactivate all other dispatchers
     if (isActive) {
@@ -51,7 +65,8 @@ router.post('/', async (req, res) => {
     const dispatcher = new Dispatcher({
       name,
       payableTo: payableTo || {},
-      isActive: isActive || false
+      isActive: isActive || false,
+      parent_id: parent_id || null
     });
 
     await dispatcher.save();
@@ -64,7 +79,14 @@ router.post('/', async (req, res) => {
 // Update dispatcher
 router.put('/:id', async (req, res) => {
   try {
-    const { name, payableTo, isActive } = req.body;
+    const { name, payableTo, isActive, parent_id } = req.body;
+
+    if (parent_id !== undefined) {
+      await validateParentId(parent_id || null);
+      if (parent_id && parent_id === req.params.id) {
+        return res.status(400).json({ error: 'Dispatcher cannot be its own parent' });
+      }
+    }
 
     // If setting as active, deactivate all other dispatchers
     if (isActive) {
@@ -74,13 +96,18 @@ router.put('/:id', async (req, res) => {
       );
     }
 
+    const update = {
+      name,
+      payableTo: payableTo || {},
+      isActive: isActive !== undefined ? isActive : false
+    };
+    if (parent_id !== undefined) {
+      update.parent_id = parent_id || null;
+    }
+
     const dispatcher = await Dispatcher.findByIdAndUpdate(
       req.params.id,
-      {
-        name,
-        payableTo: payableTo || {},
-        isActive: isActive !== undefined ? isActive : false
-      },
+      update,
       { new: true, runValidators: true }
     );
 

@@ -130,6 +130,13 @@
   background-color: #f8f9fa;
 }
 
+.sub-dispatcher-select {
+  min-width: 120px;
+  max-width: 180px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+}
+
 .results-count {
   margin-top: 1rem;
   padding: 0.5rem;
