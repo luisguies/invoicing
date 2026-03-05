@@ -1,247 +1,248 @@
 # API Reference
 
-Base URL: `http://localhost:5000/api`
+Base URL: `http://localhost/api` (via Nginx)  
+Direct backend URL: `http://localhost:5000/api`
+
+## Authentication
+
+Most routes require an authenticated session cookie.
+
+Public endpoints:
+- `POST /auth/login`
+- `POST /auth/logout`
+- `GET /auth/check`
+- `GET /health`
+
+### POST /auth/login
+Authenticate with password from `LOGIN_PASSWORD`.
+
+**Body**
+```json
+{
+  "password": "your-password"
+}
+```
+
+### POST /auth/logout
+Destroys the current session.
+
+### GET /auth/check
+Returns `{ "authenticated": true|false }`.
+
+## Health
+
+### GET /health
+Backend status endpoint.
 
 ## Upload
 
 ### POST /upload
-Upload and process a PDF file.
+Upload and OCR-process a single PDF, creating one `Load`.
 
-**Request:**
-- Content-Type: `multipart/form-data`
-- Body: `file` (PDF file)
-
-**Response:**
-```json
-{
-  "success": true,
-  "load": {
-    "_id": "...",
-    "carrier_id": {...},
-    "load_number": "...",
-    ...
-  },
-  "message": "PDF processed and load created successfully"
-}
-```
+**Request**
+- `multipart/form-data`
+- field: `file` (PDF, max 10MB)
 
 ## Loads
 
 ### GET /loads
-Get all loads with optional filters.
+List loads (defaults to excluding `invoiced: true` unless explicitly requested).
 
-**Query Parameters:**
-- `carrier_id`: Filter by carrier ID
-- `driver_id`: Filter by driver ID
-- `cancelled`: Filter by cancelled status (true/false)
-- `confirmed`: Filter by confirmed status (true/false)
+**Query params**
+- `carrier_id`
+- `driver_id`
+- `cancelled` (`true|false`)
+- `confirmed` (`true|false`)
+- `invoiced` (`true|false`)
 
-**Response:**
-```json
-[
-  {
-    "_id": "...",
-    "carrier_id": {...},
-    "driver_id": {...},
-    "load_number": "...",
-    "carrier_pay": 1000,
-    "pickup_date": "2024-01-15",
-    "delivery_date": "2024-01-20",
-    "pickup_city": "New York",
-    "pickup_state": "NY",
-    "delivery_city": "Los Angeles",
-    "delivery_state": "CA",
-    "cancelled": false,
-    "confirmed": true,
-    "date_conflict_ids": []
-  }
-]
-```
+### GET /loads/invoiced
+Search invoiced loads only.
+
+**Query params**
+- `carrier_id`
+- `load_number` (partial match, case-insensitive)
+- `driver_id`
+- `pickup_date_from`
+- `delivery_date_to`
+- `sub_dispatcher_id`
 
 ### GET /loads/grouped
-Get loads grouped by carrier.
+Returns loads grouped by carrier.
 
-**Response:**
-```json
-[
-  {
-    "carrier": {
-      "_id": "...",
-      "name": "Carrier Name",
-      "aliases": []
-    },
-    "loads": [...]
-  }
-]
-```
+**Query params**
+- `cancelled` (`true` to include cancelled)
+- `invoiced` (`true|false`, optional filtering)
+
+### GET /loads/log
+Company load log by carrier/date range.
+
+**Query params**
+- `carrier_id` (required)
+- `date_from`
+- `date_to`
+
+### GET /loads/sub-dispatcher-report
+Loads and totals for a sub-dispatcher/date range.
+
+**Query params**
+- `sub_dispatcher_id` (required)
+- `date_from`
+- `date_to`
 
 ### GET /loads/:id
-Get a specific load by ID.
+Get a load by ID.
+
+### GET /loads/:id/conflicts
+Get date-conflicting loads for a load.
+
+### POST /loads
+Create a load.
 
 ### PUT /loads/:id
-Update a load.
+Full load update.
 
-**Request Body:**
+### PATCH /loads/:id
+Driver assignment patch.
+
+**Body**
 ```json
 {
-  "load_number": "...",
-  "carrier_pay": 1000,
-  "pickup_date": "2024-01-15",
-  "delivery_date": "2024-01-20",
-  ...
+  "driver_id": "driverObjectId-or-null"
 }
 ```
 
 ### PATCH /loads/:id/cancel
-Cancel or uncancel a load.
+Set cancelled state.
 
-**Request Body:**
+### PATCH /loads/:id/confirm
+Mark load as confirmed.
+
+### PATCH /loads/:id/invoiced
+Set invoiced state.
+
+### PATCH /loads/:id/sub-dispatcher
+Set or clear `sub_dispatcher_id`.
+
+### PATCH /loads/:id/carrier
+Set carrier and optionally save OCR alias.
+
+**Body**
 ```json
 {
-  "cancelled": true
+  "carrier_id": "carrierObjectId",
+  "save_alias": false
 }
 ```
 
-### PATCH /loads/:id/confirm
-Confirm a load (required for loads with date conflicts).
-
 ### DELETE /loads/:id
-Delete a load.
-
-### GET /loads/:id/conflicts
-Get list of loads that conflict with this load.
+Delete load.
 
 ## Carriers
 
-### GET /carriers
-Get all carriers.
-
-### GET /carriers/:id
-Get a specific carrier.
-
-### POST /carriers
-Create a new carrier.
-
-**Request Body:**
-```json
-{
-  "name": "Carrier Name",
-  "aliases": ["Alias 1", "Alias 2"]
-}
-```
-
-### PUT /carriers/:id
-Update a carrier.
-
-### DELETE /carriers/:id
-Delete a carrier.
+- `GET /carriers`
+- `GET /carriers/:id`
+- `POST /carriers`
+- `PUT /carriers/:id`
+- `DELETE /carriers/:id`
 
 ## Drivers
 
-### GET /drivers
-Get all drivers.
-
-### GET /drivers/:id
-Get a specific driver.
-
-### POST /drivers
-Create a new driver.
-
-**Request Body:**
-```json
-{
-  "name": "Driver Name",
-  "carrier_id": "...",
-  "aliases": []
-}
-```
-
-### PUT /drivers/:id
-Update a driver.
-
-### DELETE /drivers/:id
-Delete a driver.
+- `GET /drivers` (supports `carrier_id` query filter)
+- `GET /drivers/:id`
+- `POST /drivers`
+- `PUT /drivers/:id`
+- `DELETE /drivers/:id`
 
 ## Rules
 
-### GET /rules
-Get all invoice rules.
+Invoice rule CRUD:
+- `GET /rules`
+- `GET /rules/:id`
+- `POST /rules`
+- `PUT /rules/:id`
+- `DELETE /rules/:id`
 
-### GET /rules/:id
-Get a specific rule.
-
-### POST /rules
-Create a new rule.
-
-**Request Body:**
-```json
-{
-  "rule_name": "Rule Name",
-  "earliest_pickup_date": "2024-01-01",
-  "latest_delivery_date": "2024-12-31",
-  "carrier_id": "..." // optional
-}
-```
-
-### PUT /rules/:id
-Update a rule.
-
-### DELETE /rules/:id
-Delete a rule.
+Used by invoice generation (`rule_id`) to select loads.
 
 ## Invoices
 
 ### GET /invoices
-Get all generated invoices.
+List invoices.
+
+**Query params**
+- `carrier` (matches carrier name / bill-to name)
+- `dateFrom`
+- `dateTo`
 
 ### GET /invoices/:id
-Get a specific invoice.
+Get invoice by ID.
 
 ### GET /invoices/:id/pdf
-Download invoice PDF file.
+Stream invoice PDF.
+
+**Query params**
+- `download=true` -> attachment
+- omitted -> inline view
+
+### PATCH /invoices/:id/paid
+Set paid/unpaid state.
+
+### DELETE /invoices/:id
+Delete invoice and unmark linked loads as invoiced.
 
 ### POST /invoices/generate
-Generate a new invoice.
+Generate one or more invoices from selected loads or an invoice rule.
 
-**Request Body:**
+**Body (example)**
 ```json
 {
-  "load_ids": ["...", "..."], // OR
-  "rule_id": "...", // Use rule to filter loads
+  "load_ids": ["..."],
+  "rule_id": "...",
   "includeUnconfirmed": false,
   "invoiceData": {
-    "invoiceNumber": "INV-001",
-    "billToName": "...",
-    "payableToName": "...",
-    ...
+    "invoiceNumber": "INV-001"
   }
 }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "invoice": {
-    "_id": "...",
-    "invoice_number": "INV-001",
-    "load_ids": [...],
-    "pdf_path": "/app/invoices/INV-001.pdf"
-  },
-  "message": "Invoice generated successfully"
-}
-```
+Notes:
+- Either `load_ids` or `rule_id` is required.
+- Cancelled and already-invoiced loads are excluded.
+- Loads are grouped by `carrier + invoice_week_id`, so one request can create multiple invoices.
 
-## Health Check
+### POST /invoices/upload-old
+Upload historical invoice PDF; creates an invoice record from parsed filename.
 
-### GET /health
-Check if the backend is running.
+Filename pattern:
+- `{Carrier Name} Invoice YYYY-MM-DD.pdf`
+- `{Carrier Name} Invoice YYYY-MM-DD (PERSON NAME).pdf`
 
-**Response:**
-```json
-{
-  "status": "ok",
-  "message": "Backend is running"
-}
-```
+### POST /invoices/extract-old-invoice
+Extract structured data from old invoice PDF.
+
+### POST /invoices/save-extracted
+Persist edited extracted old-invoice data as loads + invoice.
+
+## Dispatchers
+
+- `GET /dispatchers`
+- `GET /dispatchers/active`
+- `GET /dispatchers/:id`
+- `POST /dispatchers`
+- `PUT /dispatchers/:id`
+- `PATCH /dispatchers/:id/activate`
+- `DELETE /dispatchers/:id`
+
+## Settings
+
+### GET /settings
+Get app settings (creates defaults if none exist).
+
+### PUT /settings
+Update settings.
+
+**Body fields**
+- `defaultRate`
+- `billTo`
+- `hideInvoicedLoads`
 

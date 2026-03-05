@@ -90,6 +90,14 @@ export const getLoadsLog = async (carrierId, dateFrom, dateTo) => {
   return response.data;
 };
 
+export const getSubDispatcherReport = async (subDispatcherId, dateFrom, dateTo) => {
+  const params = { sub_dispatcher_id: subDispatcherId };
+  if (dateFrom) params.date_from = dateFrom;
+  if (dateTo) params.date_to = dateTo;
+  const response = await api.get('/loads/sub-dispatcher-report', { params });
+  return response.data;
+};
+
 export const getLoad = async (id) => {
   const response = await api.get(`/loads/${id}`);
   return response.data;
@@ -270,6 +278,15 @@ export const getInvoice = async (id) => {
 
 export const generateInvoice = async (invoiceData) => {
   const response = await api.post('/invoices/generate', invoiceData);
+  return response.data;
+};
+
+export const markInvoiceAsPaid = async (id, paid, paidDate = null) => {
+  const payload = { paid };
+  if (paid && paidDate) {
+    payload.paid_date = paidDate;
+  }
+  const response = await api.patch(`/invoices/${id}/paid`, payload);
   return response.data;
 };
 

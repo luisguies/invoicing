@@ -1,213 +1,124 @@
 # Invoicing Application
 
-A full-stack invoicing application that uses the OpenAI Vision API to extract load data from PDF files, manage carriers and drivers, detect date conflicts, and generate multi-page PDF invoices.
+Full-stack invoicing platform for OCR-based load ingestion, load lifecycle management, weekly invoice generation, and old-invoice import workflows.
 
----
+## Current Architecture
 
-## Features
+- **Nginx** (`invoicing-nginx`): reverse proxy on `http://localhost`
+- **Node.js app** (`invoicing-nodejs`): React frontend (`:3000`) + Express API (`:5000`)
+- **Python OCR service** (`invoicing-python`): OCR/extraction service on `:8000`
+- **MongoDB** (`invoicing-mongodb`): primary data store
 
-- **PDF OCR Processing**  
-  Automatically extracts load information from PDF invoices using the OpenAI Vision API
+Nginx routes:
+- `/` -> React app
+- `/api` -> Express API
 
-- **Carrier & Driver Management**  
-  Automatic matching with alias support and relationship tracking
+## Core Features
 
-- **Date Conflict Detection**  
-  Warns about overlapping dates and requires manual confirmation
-
-- **Load Management**  
-  Full CRUD operations with cancellation support
-
-- **Invoice Generation**  
-  Multi-page PDF invoices with proper pagination
-
-- **Web Interface**  
-  React-based frontend with three main pages (Upload, List, Print)
-
----
-
-## Architecture
-
-- **Frontend**: React application (Node.js container)
-- **Backend**: Express.js REST API (Node.js container)
-- **OCR Service**: Python Flask service using OpenAI Vision API
-- **Database**: MongoDB
-
----
+- Password-protected web app (session-based auth)
+- PDF upload -> OCR extraction -> load creation
+- Carrier and driver management with alias support
+- Conflict detection:
+  - Date conflicts
+  - Driver overlap conflicts (informational)
+  - Duplicate load-number conflicts per carrier (informational)
+- Invoicing workflow:
+  - Generate invoices from selected loads or invoice rules
+  - Auto-group by **carrier + invoice week**
+  - Mark loads as invoiced/uninvoiced
+- Old invoice workflows:
+  - Upload historical invoice PDFs
+  - Extract old invoice structured data
+  - Save extracted old invoices into loads + invoice records
+- Reporting pages:
+  - Invoiced load search
+  - Company load log
+  - Sub-dispatcher report
 
 ## Prerequisites
 
-- Docker
+- Docker Desktop
 - Docker Compose
 - OpenAI API key
 
----
+## Environment Variables
 
-## Setup
+Create a root `.env` file (there is currently no `.env.example` in this repo):
 
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd <repo-name>
-   ```
+```env
+OPENAI_API_KEY=your_openai_key
+LOGIN_PASSWORD=your_app_password
 
-2. **Create environment file**
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` and add your OpenAI API key:
-   ```env
-   OPENAI_API_KEY=your_openai_api_key_here
-   ```
-
-3. **Build and start containers**
-   ```bash
-   docker-compose up --build
-   ```
-
-4. **Access the application**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:5000
-   - OCR Service: http://localhost:8000
-
----
-
-## Usage
-
-### Upload PDFs
-
-1. Navigate to the **Upload** page  
-2. Drag and drop or select a PDF file  
-3. Load data is automatically extracted using OCR  
-
----
-
-### Manage Loads
-
-1. Go to the **Loads** page  
-2. View loads grouped by carrier  
-3. Edit loads inline by clicking **Edit**  
-4. Cancel or uncancel loads as needed  
-5. Confirm loads with date conflicts (⚠️ warning icon)
-
----
-
-### Generate Invoices
-
-1. On the **Loads** page, click **Generate Invoices**
-2. Only non-cancelled, confirmed loads are included
-3. View and download invoices from the **Invoices** page
-
----
-
-## API Endpoints
-
-### Upload
-- `POST /api/upload` – Upload and process a PDF file
-
-### Loads
-- `GET /api/loads`
-- `GET /api/loads/grouped`
-- `GET /api/loads/:id`
-- `PUT /api/loads/:id`
-- `PATCH /api/loads/:id/cancel`
-- `PATCH /api/loads/:id/confirm`
-- `DELETE /api/loads/:id`
-
-### Carriers
-- `GET /api/carriers`
-- `POST /api/carriers`
-- `PUT /api/carriers/:id`
-- `DELETE /api/carriers/:id`
-
-### Drivers
-- `GET /api/drivers`
-- `POST /api/drivers`
-- `PUT /api/drivers/:id`
-- `DELETE /api/drivers/:id`
-
-### Rules
-- `GET /api/rules`
-- `POST /api/rules`
-- `PUT /api/rules/:id`
-- `DELETE /api/rules/:id`
-
-### Invoices
-- `GET /api/invoices`
-- `GET /api/invoices/:id`
-- `GET /api/invoices/:id/pdf`
-- `POST /api/invoices/generate`
-
----
-
-## Date Conflict Detection
-
-The system automatically detects:
-
-- **Same pickup date** — identical pickup dates across loads
-- **Crossing dates** — pickup date occurs before another load’s delivery date
-
-When conflicts are detected:
-- A ⚠️ warning icon appears
-- Manual confirmation is required
-- Conflicting loads are linked and marked
-
----
-
-## Load Cancellation
-
-- Cancelled loads are excluded from invoice generation
-- Cancelled loads appear grayed out with strikethrough
-- Loads can be uncancelled at any time
-
----
-
-## Development
-
-### Running in Development Mode
-Runs in development mode by default with hot reloading enabled for frontend and backend.
-
-### Database
-MongoDB data is persisted to:
-```text
-./mongodb-data
+# Optional
+REACT_APP_API_URL=/api
+OPENAI_API_VERSION=gpt-4o-mini
+GEMINI_API_KEY=
 ```
 
-### File Storage
+Required for normal usage:
+- `OPENAI_API_KEY`
+- `LOGIN_PASSWORD`
+
+## Run With Docker
+
+```bash
+docker-compose up --build
+```
+
+Main URLs:
+- App (recommended): `http://localhost`
+- Frontend direct: `http://localhost:3000`
+- Backend health: `http://localhost:5000/api/health`
+- Python OCR service: `http://localhost:8000`
+
+## App Navigation (Current)
+
+- Upload
+- Loads
+- Create Load
+- Invoices
+- Upload Old Invoices
+- Invoiced Loads
+- Calendar
+- Company Load Log
+- Sub-dispatcher Report
+- Load Invoice Creator
+- Settings
+
+## API Overview
+
+All endpoints are under `/api`.  
+Only `/api/auth/*` and `/api/health` are public; all other routes require an authenticated session.
+
+- **Auth**: `/api/auth/login`, `/api/auth/logout`, `/api/auth/check`
+- **Upload**: `/api/upload`
+- **Loads**: `/api/loads`, `/api/loads/grouped`, `/api/loads/invoiced`, `/api/loads/log`, `/api/loads/sub-dispatcher-report`, and load mutation endpoints
+- **Carriers**: `/api/carriers`
+- **Drivers**: `/api/drivers`
+- **Rules**: `/api/rules`
+- **Invoices**: `/api/invoices`, `/api/invoices/generate`, `/api/invoices/upload-old`, `/api/invoices/extract-old-invoice`, `/api/invoices/save-extracted`
+- **Dispatchers**: `/api/dispatchers`
+- **Settings**: `/api/settings`
+
+See `API_REFERENCE.md` for full route-level details.
+
+## Persistence and Storage
+
+- Mongo data: `./mongodb-data`
 - Uploaded PDFs: `./uploads`
-- Generated invoices: `./invoices`
+- Generated invoices and imported old invoice files: `./invoices`, `./uploads/old-invoices`
 
----
+## Common Commands
 
-## Troubleshooting
-
-### OCR Service Not Responding
 ```bash
 docker-compose ps
-docker-compose logs python-scripts
+docker-compose logs -f
+docker-compose logs -f nodejs-app
+docker-compose logs -f python-scripts
+docker-compose logs -f mongodb
+docker-compose down
 ```
-- Verify the OpenAI API key is set correctly
-
-### MongoDB Connection Issues
-```bash
-docker-compose logs mongodb
-```
-- Ensure MongoDB container is running
-- Verify the connection string
-
-### Frontend Not Loading
-- Ensure Node.js container is running
-- Check browser console for errors
-
----
 
 ## License
 
 ISC
-
----
-
-## Tags
-
-`#invoicing` `#ocr` `#openai` `#pdf` `#react` `#docker`

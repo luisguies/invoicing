@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInvoices, downloadInvoicePDF, getInvoice, deleteInvoice, getInvoicePDFUrl } from '../services/api';
+import { getInvoices, downloadInvoicePDF, getInvoice, deleteInvoice, getInvoicePDFUrl, markInvoiceAsPaid } from '../services/api';
 import { formatDate } from '../utils/dateUtils';
 import PDFViewer from '../components/PDFViewer';
 import './PrintPage.css';
@@ -60,18 +60,22 @@ const calculateEndingMonday = (invoice) => {
 };
 
 const INVOICES_PER_CARRIER = 10;
+const getTodayDateInput = () => new Date().toISOString().slice(0, 10);
 
 const PrintPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  const [togglingPaid, setTogglingPaid] = useState(null);
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [carrierSearch, setCarrierSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [expandedCarriers, setExpandedCarriers] = useState(new Set());
+  const [paidModalInvoice, setPaidModalInvoice] = useState(null);
+  const [paidDate, setPaidDate] = useState(getTodayDateInput());
 
   const loadInvoices = async (filters = {}) => {
     setLoading(true);
@@ -141,6 +145,49 @@ const PrintPage = () => {
       alert('Failed to delete invoice: ' + (error.response?.data?.error || error.message));
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleTogglePaid = async (invoiceId, nextPaidState) => {
+    if (nextPaidState) {
+      const invoice = invoices.find((i) => i._id === invoiceId);
+      setPaidModalInvoice(invoice || null);
+      setPaidDate(invoice?.paid_date ? new Date(invoice.paid_date).toISOString().slice(0, 10) : getTodayDateInput());
+      return;
+    }
+
+    setTogglingPaid(invoiceId);
+    try {
+      const updatedInvoice = await markInvoiceAsPaid(invoiceId, false, null);
+      setInvoices((prev) => prev.map((invoice) => (
+        invoice._id === invoiceId ? updatedInvoice : invoice
+      )));
+    } catch (error) {
+      alert('Failed to update paid status: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setTogglingPaid(null);
+    }
+  };
+
+  const handleConfirmPaidDate = async () => {
+    if (!paidModalInvoice) return;
+    if (!paidDate) {
+      alert('Please select a paid date.');
+      return;
+    }
+
+    const invoiceId = paidModalInvoice._id;
+    setTogglingPaid(invoiceId);
+    try {
+      const updatedInvoice = await markInvoiceAsPaid(invoiceId, true, paidDate);
+      setInvoices((prev) => prev.map((invoice) => (
+        invoice._id === invoiceId ? updatedInvoice : invoice
+      )));
+      setPaidModalInvoice(null);
+    } catch (error) {
+      alert('Failed to update paid status: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setTogglingPaid(null);
     }
   };
 
@@ -298,6 +345,7 @@ const PrintPage = () => {
                         <th>Invoice #</th>
                         <th>Loads</th>
                         <th>Total</th>
+                        <th>Paid</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -314,7 +362,27 @@ const PrintPage = () => {
                               : (invoice.subtotal || 0)
                             ).toFixed(2)}
                           </td>
+                          <td>
+                            {invoice.paid ? (
+                              <span className="badge paid">
+                                Paid{invoice.paid_date ? ` (${formatDate(invoice.paid_date)})` : ''}
+                              </span>
+                            ) : (
+                              <span className="badge unpaid">Unpaid</span>
+                            )}
+                          </td>
                           <td className="invoice-actions-cell">
+                            <button
+                              className={`table-btn ${invoice.paid ? 'unpaid-btn' : 'paid-btn'}`}
+                              onClick={() => handleTogglePaid(invoice._id, !invoice.paid)}
+                              disabled={togglingPaid === invoice._id}
+                            >
+                              {togglingPaid === invoice._id
+                                ? '...'
+                                : invoice.paid
+                                  ? 'Mark Unpaid'
+                                  : 'Mark Paid'}
+                            </button>
                             <button
                               className="view-btn table-btn"
                               onClick={() => handleView(invoice._id)}
@@ -365,6 +433,42 @@ const PrintPage = () => {
             <button onClick={handleCloseViewer} className="close-btn">×</button>
           </div>
           <PDFViewer pdfUrl={pdfUrl} invoiceNumber={viewingInvoice.invoice_number} />
+        </div>
+      )}
+
+      {paidModalInvoice && (
+        <div className="paid-modal-overlay">
+          <div className="paid-modal">
+            <h3>Mark Invoice as Paid</h3>
+            <p>
+              <strong>{paidModalInvoice.invoice_number}</strong>
+            </p>
+            <label htmlFor="paidDateInput">Paid date</label>
+            <input
+              id="paidDateInput"
+              type="date"
+              value={paidDate}
+              onChange={(e) => setPaidDate(e.target.value)}
+            />
+            <div className="paid-modal-actions">
+              <button
+                type="button"
+                className="paid-modal-cancel-btn"
+                onClick={() => setPaidModalInvoice(null)}
+                disabled={togglingPaid === paidModalInvoice._id}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="paid-modal-save-btn"
+                onClick={handleConfirmPaidDate}
+                disabled={togglingPaid === paidModalInvoice._id}
+              >
+                {togglingPaid === paidModalInvoice._id ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

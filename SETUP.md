@@ -2,158 +2,95 @@
 
 ## Quick Start
 
-1. **Create `.env` file**:
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` and add your OpenAI API key:
-   ```
-   OPENAI_API_KEY=sk-your-actual-api-key-here
-   ```
+1. Create a root `.env` file (manual file creation; no `.env.example` exists):
+   ```env
+   OPENAI_API_KEY=your_openai_key
+   LOGIN_PASSWORD=your_app_password
 
-2. **Start the application**:
-   ```bash
-   docker-compose up --build
+   # Optional
+   REACT_APP_API_URL=/api
+   OPENAI_API_VERSION=gpt-4o-mini
+   GEMINI_API_KEY=
    ```
 
-3. **Access the application**:
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:5000/api/health
-
-## First Time Setup
-
-### Prerequisites
-- Docker Desktop installed and running
-- OpenAI API key (get one at https://platform.openai.com/api-keys)
-
-### Step-by-Step
-
-1. **Clone or navigate to the project directory**
-
-2. **Create environment file**:
-   ```bash
-   # Windows PowerShell
-   Copy-Item .env.example .env
-   
-   # Linux/Mac
-   cp .env.example .env
-   ```
-
-3. **Edit `.env` file** and add your OpenAI API key:
-   ```
-   OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   ```
-
-4. **Build and start all services**:
+2. Build and start all containers:
    ```bash
    docker-compose up --build
    ```
-   
-   This will:
-   - Build MongoDB container
-   - Build Node.js container (backend + frontend)
-   - Build Python container (OCR service)
-   - Start all services
 
-5. **Wait for services to be ready**:
-   - MongoDB: Should start quickly
-   - Python OCR Service: Should be available at http://localhost:8000
-   - Node.js Backend: Should be available at http://localhost:5000
-   - React Frontend: Should be available at http://localhost:3000
+3. Open the app:
+   - Recommended: `http://localhost` (through Nginx)
+   - Direct frontend: `http://localhost:3000`
+   - API health check: `http://localhost:5000/api/health`
 
-6. **Verify everything is working**:
-   - Open http://localhost:3000 in your browser
-   - You should see the Upload page
-   - Check backend health: http://localhost:5000/api/health
+4. Log in using the value from `LOGIN_PASSWORD`.
 
-## Troubleshooting
+## Services Started by Docker Compose
 
-### Port Already in Use
-If you get port conflicts:
-- Stop other services using ports 3000, 5000, 8000, or 27017
-- Or modify ports in `docker-compose.yml`
+- `nginx` on port `80`
+- `nodejs-app` on ports `3000` (React) and `5000` (Express API)
+- `python-scripts` on port `8000` (OCR API)
+- `mongodb` (internal network, persisted in `./mongodb-data`)
 
-### MongoDB Won't Start
-- Check if port 27017 is available
-- Check Docker logs: `docker-compose logs mongodb`
-- Try removing the `mongodb-data` folder and restarting
+## First-Time Notes
 
-### Frontend Won't Load
-- Check if Node.js container is running: `docker-compose ps`
-- Check frontend logs: `docker-compose logs nodejs-app`
-- Ensure port 3000 is not blocked by firewall
+- Most API routes require authentication. Authenticate first from the login page.
+- OCR/upload flows require a valid `OPENAI_API_KEY`.
+- Frontend API calls are configured to use `/api` behind Nginx by default.
 
-### OCR Service Errors
-- Verify OpenAI API key is correct in `.env`
-- Check Python service logs: `docker-compose logs python-scripts`
-- Ensure you have credits in your OpenAI account
+## Useful Commands
 
-### Database Connection Issues
-- Wait a few seconds after starting for MongoDB to initialize
-- Check MongoDB logs: `docker-compose logs mongodb`
-- Verify connection string in environment variables
-
-## Development Mode
-
-The application runs in development mode by default:
-- Hot reloading enabled for frontend
-- Backend restarts on file changes (if using nodemon)
-- All volumes are mounted for live editing
-
-## Stopping the Application
-
-```bash
-docker-compose down
-```
-
-To also remove volumes (deletes database data):
-```bash
-docker-compose down -v
-```
-
-## Viewing Logs
-
-View all logs:
-```bash
-docker-compose logs -f
-```
-
-View specific service logs:
-```bash
-docker-compose logs -f nodejs-app
-docker-compose logs -f python-scripts
-docker-compose logs -f mongodb
-```
-
-## Rebuilding After Changes
-
-If you modify dependencies or Dockerfiles:
+Start:
 ```bash
 docker-compose up --build
 ```
 
-## Accessing Containers
-
-### Node.js Container
+Stop:
 ```bash
-docker-compose exec nodejs-app sh
+docker-compose down
 ```
 
-### Python Container
+Stop and remove volumes (deletes DB data):
 ```bash
-docker-compose exec python-scripts bash
+docker-compose down -v
 ```
 
-### MongoDB Shell
+Follow all logs:
 ```bash
-docker-compose exec mongodb mongosh invoicing
+docker-compose logs -f
 ```
+
+Follow specific logs:
+```bash
+docker-compose logs -f nodejs-app
+docker-compose logs -f python-scripts
+docker-compose logs -f mongodb
+docker-compose logs -f nginx
+```
+
+## Troubleshooting
+
+### Login fails
+- Confirm `LOGIN_PASSWORD` is present in `.env`
+- Restart containers after env changes: `docker-compose up --build`
+
+### OCR/upload fails
+- Confirm `OPENAI_API_KEY` is valid and has usage quota
+- Check Python logs: `docker-compose logs -f python-scripts`
+
+### App loads but API calls fail
+- Use `http://localhost` so Nginx proxies `/api` correctly
+- Check Node logs: `docker-compose logs -f nodejs-app`
+- Verify backend health: `http://localhost:5000/api/health`
+
+### Port conflicts
+- Ensure ports `80`, `3000`, `5000`, and `8000` are available
+- If needed, adjust host port mappings in `docker-compose.yml`
 
 ## Data Persistence
 
-- MongoDB data: Stored in `./mongodb-data/` (created automatically)
-- Uploaded PDFs: Stored in `./uploads/` (created automatically)
-- Generated invoices: Stored in `./invoices/` (created automatically)
-
-These directories are mounted as volumes and persist between container restarts.
+- MongoDB data: `./mongodb-data`
+- Uploaded PDFs: `./uploads`
+- Generated invoices: `./invoices`
+- Uploaded old invoice files: `./uploads/old-invoices`
 

@@ -388,6 +388,14 @@ const invoiceSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  paid: {
+    type: Boolean,
+    default: false
+  },
+  paid_date: {
+    type: Date,
+    default: null
+  },
   cta: {
     type: String,
     trim: true

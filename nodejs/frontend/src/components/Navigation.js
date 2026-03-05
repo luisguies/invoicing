@@ -71,6 +71,12 @@ const Navigation = () => {
             Company Load Log
           </Link>
           <Link
+            to="/sub-dispatcher-report"
+            className={location.pathname === '/sub-dispatcher-report' ? 'active' : ''}
+          >
+            Sub-dispatcher Report
+          </Link>
+          <Link
             to="/tools/load-invoice-creator"
             className={location.pathname === '/tools/load-invoice-creator' ? 'active' : ''}
           >

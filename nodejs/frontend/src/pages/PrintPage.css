@@ -235,6 +235,30 @@
   cursor: not-allowed;
 }
 
+.paid-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.paid-btn:hover:not(:disabled) {
+  background-color: #1f8a39;
+}
+
+.unpaid-btn {
+  background-color: #ffc107;
+  color: #212529;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.unpaid-btn:hover:not(:disabled) {
+  background-color: #e0a800;
+}
+
 .delete-btn {
   padding: 0.75rem 1.5rem;
   background-color: #dc3545;
@@ -252,6 +276,101 @@
 
 .delete-btn:disabled {
   background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge.paid {
+  background: #d4edda;
+  color: #155724;
+}
+
+.badge.unpaid {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.paid-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+
+.paid-modal {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.paid-modal h3 {
+  margin: 0;
+  color: #2c3e50;
+}
+
+.paid-modal p {
+  margin: 0;
+  color: #555;
+}
+
+.paid-modal label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.paid-modal input[type='date'] {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.paid-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.paid-modal-cancel-btn,
+.paid-modal-save-btn {
+  border: none;
+  border-radius: 4px;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.paid-modal-cancel-btn {
+  background: #6c757d;
+  color: #fff;
+}
+
+.paid-modal-save-btn {
+  background: #28a745;
+  color: #fff;
+}
+
+.paid-modal-cancel-btn:disabled,
+.paid-modal-save-btn:disabled {
+  opacity: 0.7;
   cursor: not-allowed;
 }
 

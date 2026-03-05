@@ -271,6 +271,51 @@ router.get('/log', async (req, res) => {
   }
 });
 
+// Get sub-dispatcher report loads between dates
+router.get('/sub-dispatcher-report', async (req, res) => {
+  try {
+    const { sub_dispatcher_id, date_from, date_to } = req.query;
+
+    if (!sub_dispatcher_id) {
+      return res.status(400).json({ error: 'sub_dispatcher_id is required' });
+    }
+
+    const query = {
+      sub_dispatcher_id
+    };
+
+    if (date_from) {
+      const from = new Date(date_from);
+      from.setUTCHours(0, 0, 0, 0);
+      query.pickup_date = query.pickup_date || {};
+      query.pickup_date.$gte = from;
+    }
+
+    if (date_to) {
+      const to = new Date(date_to);
+      to.setUTCHours(23, 59, 59, 999);
+      query.pickup_date = query.pickup_date || {};
+      query.pickup_date.$lte = to;
+    }
+
+    const loads = await Load.find(query)
+      .populate('carrier_id', 'name aliases')
+      .populate('driver_id', 'name aliases')
+      .populate('sub_dispatcher_id', 'name parent_id')
+      .sort({ pickup_date: 1 });
+
+    const totalAmount = loads.reduce((sum, load) => sum + (Number(load.carrier_pay) || 0), 0);
+
+    res.json({
+      loads,
+      totalAmount,
+      totalLoads: loads.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get load by ID
 router.get('/:id', async (req, res) => {
   try {

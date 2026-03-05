@@ -379,6 +379,45 @@ router.get('/:id/pdf', async (req, res) => {
   }
 });
 
+// Mark invoice as paid/unpaid
+router.patch('/:id/paid', async (req, res) => {
+  try {
+    const { paid, paid_date } = req.body;
+
+    if (paid === undefined) {
+      return res.status(400).json({ error: 'paid field is required' });
+    }
+
+    const invoice = await Invoice.findById(req.params.id);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    invoice.paid = paid === true;
+    if (invoice.paid) {
+      if (!paid_date) {
+        return res.status(400).json({ error: 'paid_date is required when marking invoice as paid' });
+      }
+      const parsedPaidDate = new Date(`${paid_date}T00:00:00.000Z`);
+      if (Number.isNaN(parsedPaidDate.getTime())) {
+        return res.status(400).json({ error: 'paid_date must be a valid date (YYYY-MM-DD)' });
+      }
+      invoice.paid_date = parsedPaidDate;
+    } else {
+      invoice.paid_date = null;
+    }
+    await invoice.save();
+
+    const populated = await Invoice.findById(invoice._id)
+      .populate('load_ids', 'load_number pickup_date delivery_date carrier_pay carrier_id invoice_monday invoice_week_id')
+      .populate('load_ids.carrier_id', 'name aliases');
+
+    res.json(populated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Delete invoice (and remove stored PDF if present)
 router.delete('/:id', async (req, res) => {
   try {
