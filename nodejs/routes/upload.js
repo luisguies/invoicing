@@ -12,6 +12,11 @@ const { recalculateDuplicateConflictsForCarrierLoadNumber, checkAndUpdateDuplica
 const { Load } = require('../db/database');
 const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
 
+function toUploadsRelativePath(filePath) {
+  const filename = path.basename(filePath || '');
+  return filename ? `uploads/${filename}` : null;
+}
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -126,6 +131,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       delivery_city: ocrData.delivery_city || '',
       delivery_state: ocrData.delivery_state || '',
       pdf_filename: filename,
+      rate_confirmation_path: toUploadsRelativePath(filePath),
       cancelled: false,
       confirmed: false
     });

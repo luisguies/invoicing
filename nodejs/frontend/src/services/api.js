@@ -103,6 +103,10 @@ export const getLoad = async (id) => {
   return response.data;
 };
 
+export const getLoadRateConfirmationUrl = (id) => {
+  return `${API_URL}/loads/${id}/rate-confirmation`;
+};
+
 export const updateLoad = async (id, data) => {
   const response = await api.put(`/loads/${id}`, data);
   return response.data;

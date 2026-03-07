@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { searchInvoicedLoads, getCarriers, getDrivers, getDispatchers, markLoadAsInvoiced, patchLoadSubDispatcher } from '../services/api';
+import { searchInvoicedLoads, getCarriers, getDrivers, getDispatchers, markLoadAsInvoiced, patchLoadSubDispatcher, getLoadRateConfirmationUrl } from '../services/api';
 import { formatDate, formatDateInput } from '../utils/dateUtils';
 import './InvoicedLoadsPage.css';
 
@@ -125,6 +125,12 @@ const InvoicedLoadsPage = () => {
     }
   };
 
+  const handleViewRateConfirmation = (load) => {
+    const hasRateConfirmationPath = Boolean((load?.rate_confirmation_path || '').toString().trim());
+    if (!hasRateConfirmationPath) return;
+    window.open(getLoadRateConfirmationUrl(load._id), '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="invoiced-loads-page">
       <div className="page-header">
@@ -247,6 +253,7 @@ const InvoicedLoadsPage = () => {
             <tbody>
               {loads.map(load => {
                 const currentSubId = load.sub_dispatcher_id ? (typeof load.sub_dispatcher_id === 'object' ? load.sub_dispatcher_id._id : load.sub_dispatcher_id) : '';
+                const hasRateConfirmationPath = Boolean((load?.rate_confirmation_path || '').toString().trim());
                 return (
                   <tr key={load._id}>
                     <td>{load.load_number}</td>
@@ -273,6 +280,14 @@ const InvoicedLoadsPage = () => {
                     <td>{load.delivery_city}, {load.delivery_state}</td>
                     <td>${Number(load.carrier_pay || 0).toFixed(2)}</td>
                     <td>
+                      <button
+                        onClick={() => handleViewRateConfirmation(load)}
+                        className="view-rate-confirmation-btn"
+                        disabled={!hasRateConfirmationPath}
+                        title={hasRateConfirmationPath ? 'View rate confirmation' : 'Rate confirmation is not available'}
+                      >
+                        View Rate Confirmation
+                      </button>
                       <button
                         onClick={() => handleUnmarkAsInvoiced(load._id)}
                         className="unmark-invoiced-btn"

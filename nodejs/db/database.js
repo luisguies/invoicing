@@ -93,6 +93,12 @@ const loadSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  rate_confirmation_path: {
+    type: String,
+    required: false,
+    default: null,
+    trim: true
+  },
   cancelled: {
     type: Boolean,
     default: false

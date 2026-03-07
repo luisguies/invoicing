@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const { Load } = require('../db/database');
 const { checkAndUpdateConflicts, removeFromConflictLists } = require('../services/loadConflictService');
 const { recalculateDriverConflictsForDriver, checkAndUpdateDriverConflictsForLoad } = require('../services/driverConflictService');
@@ -10,6 +12,19 @@ const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
 
 function safeLower(s) {
   return (s || '').toString().toLowerCase();
+}
+
+function deriveRateConfirmationPath(loadData) {
+  const explicitPath = (loadData?.rate_confirmation_path || '').toString().trim();
+  return explicitPath ? explicitPath.replace(/\\/g, '/') : null;
+}
+
+function toAbsoluteRateConfirmationPath(rateConfirmationPath) {
+  const normalized = (rateConfirmationPath || '').toString().replace(/\\/g, '/').trim();
+  if (!normalized) return null;
+  if (normalized.includes('..')) return null;
+  if (!normalized.startsWith('uploads/')) return null;
+  return path.join('/app', normalized);
 }
 
 function compareCarrierGroups(a, b) {
@@ -359,6 +374,7 @@ router.get('/:id/conflicts', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const loadData = req.body;
+    loadData.rate_confirmation_path = deriveRateConfirmationPath(loadData);
 
     // Auto-assign invoice fields if we have both dates.
     if (loadData?.pickup_date && loadData?.delivery_date) {
@@ -423,6 +439,34 @@ router.post('/', async (req, res) => {
     res.status(201).json(populatedLoad);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// View load rate confirmation PDF
+router.get('/:id/rate-confirmation', async (req, res) => {
+  try {
+    const load = await Load.findById(req.params.id).select('rate_confirmation_path');
+    if (!load) {
+      return res.status(404).json({ error: 'Load not found' });
+    }
+
+    const absolutePath = toAbsoluteRateConfirmationPath(load.rate_confirmation_path);
+    if (!absolutePath) {
+      return res.status(404).json({ error: 'Rate confirmation path not available' });
+    }
+
+    if (!fs.existsSync(absolutePath)) {
+      return res.status(404).json({ error: 'Rate confirmation file not found' });
+    }
+
+    return res.sendFile(absolutePath, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'inline'
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { formatDate, formatDateInput, parseDateInputToUtcDate } from '../utils/dateUtils';
-import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver, markLoadAsInvoiced } from '../services/api';
+import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver, markLoadAsInvoiced, getLoadRateConfirmationUrl } from '../services/api';
 import './LoadItem.css';
 
 const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = false, ensureDriversLoaded }) => {
@@ -25,6 +25,7 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
   const hasDuplicateConflicts = load.duplicate_conflict === true;
   const needsCarrierReview = !load.carrier_id && load.needs_review;
   const carrierId = load?.carrier_id?._id || null;
+  const hasRateConfirmationPath = Boolean((load?.rate_confirmation_path || '').toString().trim());
 
   const driverConflictDetails = (() => {
     const ids = load.driver_conflict_ids;
@@ -168,6 +169,11 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleViewRateConfirmation = () => {
+    if (!hasRateConfirmationPath) return;
+    window.open(getLoadRateConfirmationUrl(load._id), '_blank', 'noopener,noreferrer');
   };
 
   if (editing) {
@@ -350,6 +356,14 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
         />
       </td>
       <td className="actions">
+        <button
+          onClick={handleViewRateConfirmation}
+          disabled={loading || !hasRateConfirmationPath}
+          className="view-rate-confirmation-btn"
+          title={hasRateConfirmationPath ? 'View rate confirmation' : 'Rate confirmation is not available'}
+        >
+          View Rate Confirmation
+        </button>
         <button
           className={load.cancelled ? 'uncancel-btn' : 'cancel-btn'}
           onClick={handleCancel}
