@@ -39,24 +39,25 @@ Nginx routes:
 
 - Docker Desktop
 - Docker Compose
-- OpenAI API key
+- Google Gemini API key
+- Google Cloud Vision credentials
 
 ## Environment Variables
 
 Create a root `.env` file (there is currently no `.env.example` in this repo):
 
 ```env
-OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
+GOOGLE_APPLICATION_CREDENTIALS=/app/keys/your-service-account.json
 LOGIN_PASSWORD=your_app_password
 
 # Optional
 REACT_APP_API_URL=/api
-OPENAI_API_VERSION=gpt-4o-mini
-GEMINI_API_KEY=
 ```
 
 Required for normal usage:
-- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `GOOGLE_APPLICATION_CREDENTIALS`
 - `LOGIN_PASSWORD`
 
 ## Run With Docker

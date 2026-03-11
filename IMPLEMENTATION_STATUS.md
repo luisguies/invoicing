@@ -17,7 +17,7 @@
 - [x] Invoices schema
 
 ### Backend Services
-- [x] Python OCR service using OpenAI Vision API (gpt-4o-mini)
+- [x] Python OCR service using Google Vision + Gemini
 - [x] OCR service client for Node.js
 - [x] Carrier/Driver matching service with alias support
 - [x] Load conflict detection service (date conflicts)
@@ -110,7 +110,7 @@
 1. **Set up environment**:
    ```bash
    cp .env.example .env
-   # Edit .env and add your OPENAI_API_KEY
+   # Edit .env and add your GEMINI_API_KEY + GOOGLE_APPLICATION_CREDENTIALS
    ```
 
 2. **Start services**:
@@ -134,7 +134,8 @@
 ## 🔧 Configuration
 
 Key environment variables:
-- `OPENAI_API_KEY`: Required for OCR processing
+- `GEMINI_API_KEY`: Required for Gemini field extraction
+- `GOOGLE_APPLICATION_CREDENTIALS`: Required for Google Vision OCR
 - `MONGODB_URI`: MongoDB connection string (defaults to mongodb://mongodb:27017/invoicing)
 - `PORT`: Backend port (defaults to 5000)
 - `PYTHON_SERVICE_URL`: Python OCR service URL (defaults to http://python-scripts:8000)
