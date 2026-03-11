@@ -4,12 +4,13 @@
 
 1. Create a root `.env` file (manual file creation; no `.env.example` exists):
    ```env
-   GEMINI_API_KEY=your_gemini_key
-   GOOGLE_APPLICATION_CREDENTIALS=/app/keys/your-service-account.json
+   OPENAI_API_KEY=your_openai_key
    LOGIN_PASSWORD=your_app_password
 
    # Optional
    REACT_APP_API_URL=/api
+   OPENAI_API_VERSION=gpt-4o-mini
+   GEMINI_API_KEY=
    ```
 
 2. Build and start all containers:
@@ -34,7 +35,7 @@
 ## First-Time Notes
 
 - Most API routes require authentication. Authenticate first from the login page.
-- OCR/upload flows require valid `GEMINI_API_KEY` and Google Vision credentials.
+- OCR/upload flows require a valid `OPENAI_API_KEY`.
 - Frontend API calls are configured to use `/api` behind Nginx by default.
 
 ## Useful Commands
@@ -74,8 +75,7 @@ docker-compose logs -f nginx
 - Restart containers after env changes: `docker-compose up --build`
 
 ### OCR/upload fails
-- Confirm `GEMINI_API_KEY` is valid and has usage quota
-- Confirm `GOOGLE_APPLICATION_CREDENTIALS` points to a valid service account JSON file
+- Confirm `OPENAI_API_KEY` is valid and has usage quota
 - Check Python logs: `docker-compose logs -f python-scripts`
 
 ### App loads but API calls fail

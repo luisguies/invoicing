@@ -44,6 +44,7 @@ services:
       - REACT_APP_PORT=3000
       - REACT_APP_API_URL=${REACT_APP_API_URL:-/api}
       - PYTHON_SERVICE_URL=http://python-scripts:8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LOGIN_PASSWORD=${LOGIN_PASSWORD}
       - DANGEROUSLY_DISABLE_HOST_CHECK=true
       - WDS_SOCKET_HOST=localhost
@@ -66,6 +67,8 @@ services:
       - ./uploads:/app/uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_VERSION=${OPENAI_API_VERSION:-gpt-4o-mini}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/keys/spo-transport-invoices-9936b835298b.json
       - LOGIN_PASSWORD=${LOGIN_PASSWORD}
