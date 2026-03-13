@@ -3,7 +3,7 @@ import LoadItem from './LoadItem';
 import { getDriversByCarrier } from '../services/api';
 import './LoadList.css';
 
-const LoadList = ({ groups, onLoadUpdate, onLoadDelete }) => {
+const LoadList = ({ groups, onLoadUpdate, onLoadDelete, subDispatchers = [] }) => {
   const [driversByCarrier, setDriversByCarrier] = useState({});
   const [driversLoadingByCarrier, setDriversLoadingByCarrier] = useState({});
 
@@ -48,6 +48,7 @@ const LoadList = ({ groups, onLoadUpdate, onLoadDelete }) => {
                 <th>Destination</th>
                 <th>Amount</th>
                 <th>Driver</th>
+                <th>Sub-dispatcher</th>
                 <th>Carrier</th>
                 <th>Invoiced</th>
                 <th>Actions</th>
@@ -63,6 +64,7 @@ const LoadList = ({ groups, onLoadUpdate, onLoadDelete }) => {
                   drivers={group?.carrier?._id ? driversByCarrier[group.carrier._id] : []}
                   driversLoading={group?.carrier?._id ? !!driversLoadingByCarrier[group.carrier._id] : false}
                   ensureDriversLoaded={ensureDriversLoaded}
+                  subDispatchers={subDispatchers}
                 />
               ))}
             </tbody>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import LoadList from '../components/LoadList';
 import InvoiceRules from '../components/InvoiceRules';
 import GenerateInvoiceButton from '../components/GenerateInvoiceButton';
-import { getLoadsGrouped, deleteLoad, generateInvoice } from '../services/api';
+import { getLoadsGrouped, deleteLoad, generateInvoice, getDispatchers } from '../services/api';
 import './ListPage.css';
 
 const ListPage = () => {
@@ -12,10 +12,12 @@ const ListPage = () => {
   const [generating, setGenerating] = useState(false);
   const [selectedRule, setSelectedRule] = useState(null);
   const [includeUnconfirmed, setIncludeUnconfirmed] = useState(true);
+  const [dispatchers, setDispatchers] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     loadData();
+    loadDispatchers();
   }, []);
 
   const loadData = async () => {
@@ -28,6 +30,15 @@ const ListPage = () => {
       alert('Failed to load loads: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDispatchers = async () => {
+    try {
+      const data = await getDispatchers();
+      setDispatchers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load dispatchers:', error);
     }
   };
 
@@ -69,6 +80,8 @@ const ListPage = () => {
       });
     });
   };
+
+  const subDispatchers = dispatchers.filter((d) => d.parent_id);
 
   const handleLoadDelete = async (loadId) => {
     if (!window.confirm('Are you sure you want to delete this load?')) {
@@ -148,6 +161,7 @@ const ListPage = () => {
         groups={groups}
         onLoadUpdate={handleLoadUpdate}
         onLoadDelete={handleLoadDelete}
+        subDispatchers={subDispatchers}
       />
 
       <GenerateInvoiceButton

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { formatDate, formatDateInput, parseDateInputToUtcDate } from '../utils/dateUtils';
-import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver, markLoadAsInvoiced, getLoadRateConfirmationUrl } from '../services/api';
+import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver, markLoadAsInvoiced, getLoadRateConfirmationUrl, patchLoadSubDispatcher } from '../services/api';
 import './LoadItem.css';
 
-const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = false, ensureDriversLoaded }) => {
+const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = false, ensureDriversLoaded, subDispatchers = [] }) => {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [carriers, setCarriers] = useState([]);
@@ -50,6 +50,12 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
     if (!load?.driver_id) return null;
     if (typeof load.driver_id === 'string') return load.driver_id;
     return load.driver_id._id || null;
+  })();
+
+  const currentSubDispatcherId = (() => {
+    if (!load?.sub_dispatcher_id) return '';
+    if (typeof load.sub_dispatcher_id === 'string') return load.sub_dispatcher_id;
+    return load.sub_dispatcher_id._id || '';
   })();
 
   // Load carriers when component mounts or when carrier_id is null
@@ -171,6 +177,19 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
     }
   };
 
+  const handleSubDispatcherChange = async (e) => {
+    const nextId = e.target.value || null;
+    setLoading(true);
+    try {
+      const updatedLoad = await patchLoadSubDispatcher(load._id, nextId);
+      onUpdate(updatedLoad, { refresh: false });
+    } catch (error) {
+      alert('Failed to update sub-dispatcher: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleViewRateConfirmation = () => {
     if (!hasRateConfirmationPath) return;
     window.open(getLoadRateConfirmationUrl(load._id), '_blank', 'noopener,noreferrer');
@@ -242,6 +261,22 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
             onChange={(e) => setFormData({ ...formData, carrier_pay: parseFloat(e.target.value) })}
           />
         </td>
+        <td className="sub-dispatcher-cell">
+          <select
+            className="sub-dispatcher-select"
+            value={currentSubDispatcherId}
+            onChange={handleSubDispatcherChange}
+            disabled={loading}
+            title="Assign or change sub-dispatcher"
+          >
+            <option value="">(None)</option>
+            {subDispatchers.map((d) => (
+              <option key={d._id} value={d._id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </td>
         <td>
           <input
             type="checkbox"
@@ -299,6 +334,22 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
                 {d.name}
               </option>
             ))}
+        </select>
+      </td>
+      <td className="sub-dispatcher-cell">
+        <select
+          className="sub-dispatcher-select"
+          value={currentSubDispatcherId}
+          onChange={handleSubDispatcherChange}
+          disabled={loading}
+          title="Assign or change sub-dispatcher"
+        >
+          <option value="">(None)</option>
+          {subDispatchers.map((d) => (
+            <option key={d._id} value={d._id}>
+              {d.name}
+            </option>
+          ))}
         </select>
       </td>
       <td className="carrier-cell">
