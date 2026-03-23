@@ -2,6 +2,80 @@ const axios = require('axios');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://python-scripts:8000';
 
+const OCR_TIMEOUT_MS = Number(process.env.OCR_SERVICE_TIMEOUT_MS) || 120000;
+const OCR_HTTP_MAX_ATTEMPTS = Math.max(1, Number(process.env.OCR_HTTP_MAX_ATTEMPTS) || 3);
+const OCR_HTTP_RETRY_BASE_MS = Number(process.env.OCR_HTTP_RETRY_BASE_MS) || 1500;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Map axios errors from the Python AI/OCR service to clear user-facing messages.
+ */
+function mapOcrAxiosError(error) {
+  if (error.response) {
+    const d = error.response.data || {};
+    if (error.response.status === 429 || d.code === 'rate_limit_exceeded') {
+      const msg = d.error || 'AI processing rate limit exceeded.';
+      const sec = d.retry_after_seconds;
+      return new Error(
+        sec != null ? `${msg} Retry after about ${sec} seconds.` : msg
+      );
+    }
+    const errorMsg = d.error || d.message || error.message;
+    return new Error(`OCR service error: ${errorMsg}`);
+  }
+  if (error.request) {
+    return new Error(
+      'OCR service is not responding (timeout or network). Please check if the Python service is running.'
+    );
+  }
+  return new Error(`OCR request error: ${error.message}`);
+}
+
+/**
+ * POST to Python OCR with retries on transient failures (timeouts, 502/503/504).
+ * Does not retry 429 rate limit responses from the AI document limiter.
+ */
+async function postPythonOcr(url, data, options = {}) {
+  const { isForm = false } = options;
+  const config = {
+    timeout: OCR_TIMEOUT_MS,
+    headers: isForm ? data.getHeaders() : { 'Content-Type': 'application/json' }
+  };
+
+  let lastError;
+  for (let attempt = 1; attempt <= OCR_HTTP_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await axios.post(url, data, config);
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status === 429 || error.response?.data?.code === 'rate_limit_exceeded') {
+        throw mapOcrAxiosError(error);
+      }
+      const st = error.response?.status;
+      const retryable =
+        !error.response ||
+        st === 502 ||
+        st === 503 ||
+        st === 504 ||
+        st === 408 ||
+        error.code === 'ECONNABORTED' ||
+        error.code === 'ETIMEDOUT';
+      if (!retryable || attempt === OCR_HTTP_MAX_ATTEMPTS) {
+        throw mapOcrAxiosError(error);
+      }
+      const wait = OCR_HTTP_RETRY_BASE_MS * 2 ** (attempt - 1);
+      console.warn(
+        `[ocrService] Retry ${attempt}/${OCR_HTTP_MAX_ATTEMPTS} for ${url} (${error.message}); waiting ${wait}ms`
+      );
+      await sleep(wait);
+    }
+  }
+  throw mapOcrAxiosError(lastError);
+}
+
 /**
  * Send PDF file to Python OCR service for processing
  * @param {string} filePath - Path to the PDF file
@@ -9,32 +83,18 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://python-scri
  */
 async function processPDF(filePath) {
   try {
-    const response = await axios.post(`${PYTHON_SERVICE_URL}/process-pdf`, {
-      file_path: filePath
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      timeout: 60000 // 60 second timeout for OCR processing
-    });
+    const response = await postPythonOcr(
+      `${PYTHON_SERVICE_URL}/process-pdf`,
+      { file_path: filePath }
+    );
 
     if (response.data.success) {
       return response.data.data;
-    } else {
-      throw new Error(response.data.error || 'OCR processing failed');
     }
+    throw new Error(response.data.error || 'OCR processing failed');
   } catch (error) {
     console.error('OCR Service Error (processPDF):', error.message);
-    if (error.response) {
-      const errorMsg = error.response.data?.error || error.response.data?.message || error.message;
-      console.error('OCR Service Response:', error.response.data);
-      throw new Error(`OCR service error: ${errorMsg}`);
-    } else if (error.request) {
-      console.error('OCR Service Request Error:', error.request);
-      throw new Error('OCR service is not responding. Please check if the Python service is running.');
-    } else {
-      throw new Error(`OCR request error: ${error.message}`);
-    }
+    throw error;
   }
 }
 
@@ -53,28 +113,17 @@ async function processPDFBuffer(fileBuffer, filename) {
       contentType: 'application/pdf'
     });
 
-    const response = await axios.post(`${PYTHON_SERVICE_URL}/process-pdf`, form, {
-      headers: form.getHeaders(),
-      timeout: 60000 // 60 second timeout for OCR processing
+    const response = await postPythonOcr(`${PYTHON_SERVICE_URL}/process-pdf`, form, {
+      isForm: true
     });
 
     if (response.data.success) {
       return response.data.data;
-    } else {
-      throw new Error(response.data.error || 'OCR processing failed');
     }
+    throw new Error(response.data.error || 'OCR processing failed');
   } catch (error) {
     console.error('OCR Service Error (processPDFBuffer):', error.message);
-    if (error.response) {
-      const errorMsg = error.response.data?.error || error.response.data?.message || error.message;
-      console.error('OCR Service Response:', error.response.data);
-      throw new Error(`OCR service error: ${errorMsg}`);
-    } else if (error.request) {
-      console.error('OCR Service Request Error:', error.request);
-      throw new Error('OCR service is not responding. Please check if the Python service is running.');
-    } else {
-      throw new Error(`OCR request error: ${error.message}`);
-    }
+    throw error;
   }
 }
 
@@ -100,19 +149,15 @@ async function checkHealth() {
  */
 async function extractOldInvoice(filePath) {
   try {
-    const response = await axios.post(
-      `${PYTHON_SERVICE_URL}/extract-old-invoice`,
-      { file_path: filePath },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
-    );
+    const response = await postPythonOcr(`${PYTHON_SERVICE_URL}/extract-old-invoice`, {
+      file_path: filePath
+    });
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
     throw new Error(response.data.error || 'Extract failed');
   } catch (error) {
-    if (error.response && error.response.data && error.response.data.error) {
-      throw new Error(error.response.data.error);
-    }
+    console.error('OCR Service Error (extractOldInvoice):', error.message);
     throw error;
   }
 }
@@ -123,4 +168,3 @@ module.exports = {
   checkHealth,
   extractOldInvoice
 };
-

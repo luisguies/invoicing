@@ -3,16 +3,41 @@
 Flask API server for PDF OCR processing.
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import os
 import json
 from pdf_ocr import process_pdf
 from extract_old_invoice import extract_old_invoice
+from ai_helpers import acquire_ai_document_slot
 import traceback
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+
+def _ai_rate_limit_per_hour() -> int:
+    try:
+        return max(1, int(os.getenv("AI_DOCUMENTS_PER_HOUR", "100")))
+    except ValueError:
+        return 100
+
+
+def _rate_limit_response(retry_after: float):
+    """HTTP 429 with Retry-After when too many documents/hour."""
+    sec = max(1, int(retry_after) + 1) if retry_after is not None else 60
+    body = {
+        "success": False,
+        "error": (
+            f"AI processing rate limit exceeded ({_ai_rate_limit_per_hour()} documents per hour). "
+            "Try again later."
+        ),
+        "code": "rate_limit_exceeded",
+        "retry_after_seconds": sec,
+    }
+    r = make_response(jsonify(body), 429)
+    r.headers["Retry-After"] = str(sec)
+    return r
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -32,6 +57,9 @@ def extract_old_invoice_endpoint():
             file = request.files['file']
             if file.filename == '':
                 return jsonify({"error": "No file provided"}), 400
+            ok, retry_after = acquire_ai_document_slot()
+            if not ok:
+                return _rate_limit_response(retry_after or 60.0)
             upload_dir = '/app/uploads'
             os.makedirs(upload_dir, exist_ok=True)
             file_path = os.path.join(upload_dir, file.filename)
@@ -50,6 +78,9 @@ def extract_old_invoice_endpoint():
                 return jsonify({"error": "file_path not provided"}), 400
             if not os.path.exists(file_path):
                 return jsonify({"error": f"File not found: {file_path}"}), 404
+            ok, retry_after = acquire_ai_document_slot()
+            if not ok:
+                return _rate_limit_response(retry_after or 60.0)
             result = extract_old_invoice(file_path)
             if result:
                 return jsonify({"success": True, "data": result, "filename": os.path.basename(file_path)}), 200
@@ -78,14 +109,18 @@ def process_pdf_endpoint():
             file = request.files['file']
             if file.filename == '':
                 return jsonify({"error": "No file provided"}), 400
-            
+
+            ok, retry_after = acquire_ai_document_slot()
+            if not ok:
+                return _rate_limit_response(retry_after or 60.0)
+
             # Save uploaded file temporarily
             upload_dir = '/app/uploads'
             os.makedirs(upload_dir, exist_ok=True)
-            
+
             file_path = os.path.join(upload_dir, file.filename)
             file.save(file_path)
-            
+
             try:
                 # Process the PDF
                 result = process_pdf(file_path)
@@ -124,6 +159,9 @@ def process_pdf_endpoint():
             if not os.path.exists(file_path):
                 return jsonify({"error": f"File not found: {file_path}"}), 404
             
+            ok, retry_after = acquire_ai_document_slot()
+            if not ok:
+                return _rate_limit_response(retry_after or 60.0)
             # Process the PDF
             result = process_pdf(file_path)
             

@@ -12,6 +12,8 @@ from typing import Any, Dict, Optional
 
 import google.generativeai as genai
 
+from ai_helpers import gemini_generate_content_with_retry
+
 
 def setup_gemini():
     """Initialize Gemini API with credentials (same as load OCR)."""
@@ -94,8 +96,16 @@ Return the JSON object only.
 """
 
     try:
-        response = model.generate_content(prompt)
-        if not response or not response.text:
+        response = gemini_generate_content_with_retry(model, prompt)
+        if not response:
+            return None
+        if not getattr(response, "candidates", None):
+            print(
+                f"Gemini old-invoice: no candidates (blocked or empty). "
+                f"prompt_feedback={getattr(response, 'prompt_feedback', None)!r}"
+            )
+            return None
+        if not response.text:
             return None
         cleaned = _clean_json_response(response.text)
         if not cleaned:
@@ -107,7 +117,8 @@ Return the JSON object only.
         return _normalize_gemini_output(data)
     except json.JSONDecodeError:
         return None
-    except Exception:
+    except Exception as e:
+        print(f"Gemini old-invoice extraction failed (after retries): {e!r}")
         return None
 
 

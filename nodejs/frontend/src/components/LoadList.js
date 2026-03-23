@@ -3,6 +3,40 @@ import LoadItem from './LoadItem';
 import { getDriversByCarrier } from '../services/api';
 import './LoadList.css';
 
+const getDriverDetails = (load) => {
+  const driver = load?.driver_id;
+  if (!driver) {
+    return { key: 'unassigned', name: 'UNASSIGNED' };
+  }
+
+  if (typeof driver === 'string') {
+    return { key: driver, name: 'Assigned Driver' };
+  }
+
+  return {
+    key: driver._id || 'unassigned',
+    name: driver.name || 'UNASSIGNED'
+  };
+};
+
+const groupLoadsByDriver = (loads = []) => {
+  const groupsByDriver = new Map();
+
+  loads.forEach((load) => {
+    const { key, name } = getDriverDetails(load);
+    if (!groupsByDriver.has(key)) {
+      groupsByDriver.set(key, { key, name, loads: [] });
+    }
+    groupsByDriver.get(key).loads.push(load);
+  });
+
+  return Array.from(groupsByDriver.values()).sort((a, b) => {
+    if (a.key === 'unassigned') return 1;
+    if (b.key === 'unassigned') return -1;
+    return a.name.localeCompare(b.name);
+  });
+};
+
 const LoadList = ({ groups, onLoadUpdate, onLoadDelete, subDispatchers = [] }) => {
   const [driversByCarrier, setDriversByCarrier] = useState({});
   const [driversLoadingByCarrier, setDriversLoadingByCarrier] = useState({});
@@ -38,37 +72,45 @@ const LoadList = ({ groups, onLoadUpdate, onLoadDelete, subDispatchers = [] }) =
               <span className="aliases"> ({group.carrier.aliases.join(', ')})</span>
             )}
           </h3>
-          <table className="loads-table">
-            <thead>
-              <tr>
-                <th>Load #</th>
-                <th>Pickup Date</th>
-                <th>Delivery Date</th>
-                <th>Origin</th>
-                <th>Destination</th>
-                <th>Amount</th>
-                <th>Driver</th>
-                <th>Sub-dispatcher</th>
-                <th>Carrier</th>
-                <th>Invoiced</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.loads.map((load) => (
-                <LoadItem
-                  key={load._id}
-                  load={load}
-                  onUpdate={onLoadUpdate}
-                  onDelete={onLoadDelete}
-                  drivers={group?.carrier?._id ? driversByCarrier[group.carrier._id] : []}
-                  driversLoading={group?.carrier?._id ? !!driversLoadingByCarrier[group.carrier._id] : false}
-                  ensureDriversLoaded={ensureDriversLoaded}
-                  subDispatchers={subDispatchers}
-                />
-              ))}
-            </tbody>
-          </table>
+
+          <div className="driver-groups">
+            {groupLoadsByDriver(group.loads).map((driverGroup) => (
+              <div key={driverGroup.key} className="driver-group">
+                <h4 className="driver-name">{driverGroup.name}</h4>
+                <table className="loads-table">
+                  <thead>
+                    <tr>
+                      <th>Load #</th>
+                      <th>Pickup Date</th>
+                      <th>Delivery Date</th>
+                      <th>Origin</th>
+                      <th>Destination</th>
+                      <th>Amount</th>
+                      <th>Driver</th>
+                      <th>Sub-dispatcher</th>
+                      <th>Carrier</th>
+                      <th>Invoiced</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {driverGroup.loads.map((load) => (
+                      <LoadItem
+                        key={load._id}
+                        load={load}
+                        onUpdate={onLoadUpdate}
+                        onDelete={onLoadDelete}
+                        drivers={group?.carrier?._id ? driversByCarrier[group.carrier._id] : []}
+                        driversLoading={group?.carrier?._id ? !!driversLoadingByCarrier[group.carrier._id] : false}
+                        ensureDriversLoaded={ensureDriversLoaded}
+                        subDispatchers={subDispatchers}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>

@@ -8,13 +8,19 @@ import json
 from pdf2image import convert_from_path
 from openai import OpenAI
 from typing import Dict, Optional, List
+
+from ai_helpers import openai_responses_create_with_retry
 import base64
 from io import BytesIO
 import pdfplumber
 from pathlib import Path
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# Initialize OpenAI client (longer timeout for vision + structured output)
+_OPENAI_TIMEOUT = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "120"))
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    timeout=_OPENAI_TIMEOUT,
+)
 
 # JSON Schema for structured output
 RATE_CON_SCHEMA = {
@@ -88,6 +94,7 @@ def extract_json_from_response(response):
 
     # 2) Walk output items/content and collect any text-like content.
     texts = []
+    saw_refusal_only_candidate = False
     output_items = _get(response, "output", []) or []
     for item in output_items:
         item_type = _get(item, "type")
@@ -99,25 +106,41 @@ def extract_json_from_response(response):
 
         # Content blocks under message/output entries
         content_blocks = _get(item, "content", []) or []
+        refusal_blocks = 0
+        non_refusal_blocks = 0
         for block in content_blocks:
             block_type = _get(block, "type")
             # Common text blocks seen in Responses API variants
             if block_type in ("output_text", "text", "refusal", "error"):
+                if block_type == "refusal":
+                    refusal_blocks += 1
+                else:
+                    non_refusal_blocks += 1
                 block_text = _get(block, "text") or _get(block, "refusal") or _get(block, "message")
                 if isinstance(block_text, str) and block_text.strip():
                     texts.append(block_text)
+
+        if refusal_blocks and not non_refusal_blocks and not item_text:
+            saw_refusal_only_candidate = True
 
         # Some errors are represented at item level
         if item_type == "error":
             err_msg = _get(item, "message")
             if isinstance(err_msg, str) and err_msg.strip():
                 texts.append(err_msg)
+        if item_type == "refusal":
+            saw_refusal_only_candidate = True
 
     combined = "\n".join(texts).strip()
     if not combined:
+        if saw_refusal_only_candidate:
+            print("OpenAI returned a policy refusal or empty output; no JSON to parse.")
         return None
 
-    return _extract_json_from_text(combined)
+    parsed = _extract_json_from_text(combined)
+    if parsed is None and saw_refusal_only_candidate:
+        print("OpenAI output included a refusal or non-JSON response; treating as extraction failure.")
+    return parsed
 
 
 
@@ -230,6 +253,19 @@ def get_safe_default() -> Dict:
         "needs_review": True,
         "warnings": ["Structured output failed"]
     }
+
+
+def get_safe_default_ai_failure(reason: str, detail: str = "") -> Dict:
+    """
+    Same as get_safe_default but with explicit AI timeout / API error / refusal messaging
+    for operators and the review queue.
+    """
+    out = get_safe_default()
+    warnings = [f"AI extraction failed: {reason}"]
+    if detail:
+        warnings.append(str(detail)[:500])
+    out["warnings"] = warnings
+    return out
 
 
 def is_extraction_failed(data: Dict) -> bool:
@@ -436,7 +472,8 @@ def extract_load_data_from_text(text: str) -> Dict:
 
         print(f"Calling OpenAI Responses API with model: {model} (structured outputs)")
 
-        response = client.responses.create(
+        response = openai_responses_create_with_retry(
+            client,
             model=model,
             # Force actual text output
             modalities=["text"],
@@ -461,15 +498,17 @@ def extract_load_data_from_text(text: str) -> Dict:
         if data:
             return convert_to_legacy_format(data)
 
-        print("No usable OCR output; returning safe default")
-        return get_safe_default()
-
+        print("No usable OCR output; returning AI failure default")
+        return get_safe_default_ai_failure(
+            "empty_or_unparseable_response",
+            "Model returned no usable JSON (timeout, refusal, or malformed output after retries).",
+        )
 
     except Exception as e:
         print(f"Error extracting data from text: {str(e)}")
         import traceback
         traceback.print_exc()
-        return get_safe_default()
+        return get_safe_default_ai_failure("openai_api_error", str(e))
 
 
 def extract_load_data_from_image(image) -> Dict:
@@ -498,7 +537,8 @@ Return JSON only.
 
         # Some OpenAI SDK versions don't support the `modalities` argument.
         # We'll avoid it for compatibility.
-        response = client.responses.create(
+        response = openai_responses_create_with_retry(
+            client,
             model=model,
             input=[{
                 "role": "user",
@@ -528,14 +568,16 @@ Return JSON only.
         print("OpenAI image OCR returned no usable JSON")
         print("DEBUG output_text:", getattr(response, "output_text", None))
         print("DEBUG output item types:", [getattr(x, "type", None) for x in getattr(response, "output", []) or []])
-        return get_safe_default()
-
+        return get_safe_default_ai_failure(
+            "empty_or_unparseable_response",
+            "Vision model returned no usable JSON (timeout, refusal, or malformed output after retries).",
+        )
 
     except Exception as e:
         print(f"Error extracting data from image: {str(e)}")
         import traceback
         traceback.print_exc()
-        return get_safe_default()
+        return get_safe_default_ai_failure("openai_vision_error", str(e))
 
 
 

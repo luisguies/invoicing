@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Dict, Optional
 import google.generativeai as genai
 
+from ai_helpers import gemini_generate_content_with_retry
+
 def setup_gemini():
     """Initialize Gemini API with credentials."""
     api_key = os.getenv("GEMINI_API_KEY")
@@ -66,13 +68,19 @@ def extract_data_with_gemini(model, raw_text: str) -> Optional[Dict]:
     """
     
     try:
-        response = model.generate_content(prompt)
-        
+        response = gemini_generate_content_with_retry(model, prompt)
+
+        # Blocked or empty candidates (safety / policy)
+        if not getattr(response, "candidates", None):
+            pf = getattr(response, "prompt_feedback", None)
+            print(f"ERROR: No candidates from Gemini (blocked or empty). prompt_feedback={pf!r}")
+            return None
+
         # Debug: Print the raw response (commented out for production)
         # print(f"DEBUG - Raw response: '{response.text}'")
-        
+
         if not response.text or response.text.strip() == "":
-            print("ERROR: Empty response from Gemini")
+            print("ERROR: Empty response text from Gemini")
             return None
         
         # Clean the response - remove markdown code blocks if present
@@ -91,10 +99,10 @@ def extract_data_with_gemini(model, raw_text: str) -> Optional[Dict]:
         
     except json.JSONDecodeError as e:
         print(f"JSON Parse Error: {e}")
-        print(f"Response was: '{response.text}'")
+        print(f"Response was: '{getattr(response, 'text', '')}'")
         return None
     except Exception as e:
-        print(f"Error during Gemini extraction: {e}")
+        print(f"Error during Gemini extraction (after retries): {e}")
         return None
 
 def main():

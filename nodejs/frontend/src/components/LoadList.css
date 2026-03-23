@@ -11,6 +11,25 @@
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+.driver-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.driver-group {
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 1rem;
+  background-color: #fafbfc;
+}
+
+.driver-name {
+  margin: 0 0 0.75rem 0;
+  color: #2c3e50;
+  font-size: 1.05rem;
+}
+
 .carrier-name {
   margin-bottom: 1rem;
   color: #2c3e50;
@@ -26,6 +45,7 @@
 .loads-table {
   width: 100%;
   border-collapse: collapse;
+  background-color: white;
 }
 
 .loads-table thead {

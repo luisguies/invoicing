@@ -55,6 +55,28 @@ OPENAI_API_VERSION=gpt-4o-mini
 GEMINI_API_KEY=
 ```
 
+**Python AI / OCR service** (optional tuning; defaults are safe for production):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `AI_DOCUMENTS_PER_HOUR` | `100` | Max `/process-pdf` and `/extract-old-invoice` requests per rolling hour (sliding window). |
+| `AI_RATE_LIMIT_WINDOW_SECONDS` | `3600` | Window length for the document limiter. |
+| `OPENAI_TIMEOUT_SECONDS` | `120` | OpenAI client timeout (seconds). |
+| `AI_OPENAI_MAX_ATTEMPTS` | `4` | Retries for transient OpenAI errors (429, 5xx, timeouts). |
+| `AI_OPENAI_RETRY_BASE_DELAY` | `1.0` | Base delay (seconds) for OpenAI exponential backoff. |
+| `AI_OPENAI_RETRY_MAX_DELAY` | `60.0` | Cap on OpenAI retry delay (seconds). |
+| `AI_GEMINI_MAX_ATTEMPTS` | `4` | Retries for transient Gemini errors. |
+| `AI_GEMINI_RETRY_BASE_DELAY` | `1.0` | Base delay (seconds) for Gemini backoff. |
+| `AI_GEMINI_RETRY_MAX_DELAY` | `60.0` | Cap on Gemini retry delay (seconds). |
+
+**Node → Python OCR client** (optional):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `OCR_SERVICE_TIMEOUT_MS` | `120000` | HTTP timeout when calling the Python service. |
+| `OCR_HTTP_MAX_ATTEMPTS` | `3` | Retries for timeouts / 502 / 503 / 504 (not for 429). |
+| `OCR_HTTP_RETRY_BASE_MS` | `1500` | Base backoff between HTTP retries. |
+
 Required for normal usage:
 - `OPENAI_API_KEY`
 - `LOGIN_PASSWORD`
