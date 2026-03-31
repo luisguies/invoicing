@@ -77,37 +77,39 @@ const LoadList = ({ groups, onLoadUpdate, onLoadDelete, subDispatchers = [] }) =
             {groupLoadsByDriver(group.loads).map((driverGroup) => (
               <div key={driverGroup.key} className="driver-group">
                 <h4 className="driver-name">{driverGroup.name}</h4>
-                <table className="loads-table">
-                  <thead>
-                    <tr>
-                      <th>Load #</th>
-                      <th>Pickup Date</th>
-                      <th>Delivery Date</th>
-                      <th>Origin</th>
-                      <th>Destination</th>
-                      <th>Amount</th>
-                      <th>Driver</th>
-                      <th>Sub-dispatcher</th>
-                      <th>Carrier</th>
-                      <th>Invoiced</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {driverGroup.loads.map((load) => (
-                      <LoadItem
-                        key={load._id}
-                        load={load}
-                        onUpdate={onLoadUpdate}
-                        onDelete={onLoadDelete}
-                        drivers={group?.carrier?._id ? driversByCarrier[group.carrier._id] : []}
-                        driversLoading={group?.carrier?._id ? !!driversLoadingByCarrier[group.carrier._id] : false}
-                        ensureDriversLoaded={ensureDriversLoaded}
-                        subDispatchers={subDispatchers}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+                <div className="loads-table-wrap">
+                  <table className="loads-table">
+                    <thead>
+                      <tr>
+                        <th>Load #</th>
+                        <th>Pickup Date</th>
+                        <th>Delivery Date</th>
+                        <th>Origin</th>
+                        <th>Destination</th>
+                        <th>Amount</th>
+                        <th>Driver</th>
+                        <th>Sub-dispatcher</th>
+                        <th>Carrier</th>
+                        <th>Invoiced</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {driverGroup.loads.map((load) => (
+                        <LoadItem
+                          key={load._id}
+                          load={load}
+                          onUpdate={onLoadUpdate}
+                          onDelete={onLoadDelete}
+                          drivers={group?.carrier?._id ? driversByCarrier[group.carrier._id] : []}
+                          driversLoading={group?.carrier?._id ? !!driversLoadingByCarrier[group.carrier._id] : false}
+                          ensureDriversLoaded={ensureDriversLoaded}
+                          subDispatchers={subDispatchers}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ))}
           </div>

@@ -8,6 +8,7 @@ const SubDispatcherReportPage = () => {
   const [subDispatcherId, setSubDispatcherId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [excludeCancelled, setExcludeCancelled] = useState(true);
   const [loads, setLoads] = useState([]);
   const [totalAmount, setTotalAmount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -41,7 +42,12 @@ const SubDispatcherReportPage = () => {
     setError('');
 
     try {
-      const report = await getSubDispatcherReport(subDispatcherId, dateFrom || undefined, dateTo || undefined);
+      const report = await getSubDispatcherReport(
+        subDispatcherId,
+        dateFrom || undefined,
+        dateTo || undefined,
+        excludeCancelled
+      );
       setLoads(report.loads || []);
       setTotalAmount(Number(report.totalAmount) || 0);
       setLoaded(true);
@@ -106,6 +112,18 @@ const SubDispatcherReportPage = () => {
               disabled={loading}
             />
           </div>
+        </div>
+        <div className="form-row checkbox-row">
+          <label htmlFor="excludeCancelled" className="checkbox-label">
+            <input
+              id="excludeCancelled"
+              type="checkbox"
+              checked={excludeCancelled}
+              onChange={(e) => setExcludeCancelled(e.target.checked)}
+              disabled={loading}
+            />
+            Exclude cancelled loads
+          </label>
         </div>
 
         <div className="form-actions">

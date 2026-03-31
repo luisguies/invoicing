@@ -289,7 +289,7 @@ router.get('/log', async (req, res) => {
 // Get sub-dispatcher report loads between dates
 router.get('/sub-dispatcher-report', async (req, res) => {
   try {
-    const { sub_dispatcher_id, date_from, date_to } = req.query;
+    const { sub_dispatcher_id, date_from, date_to, exclude_cancelled } = req.query;
 
     if (!sub_dispatcher_id) {
       return res.status(400).json({ error: 'sub_dispatcher_id is required' });
@@ -298,6 +298,10 @@ router.get('/sub-dispatcher-report', async (req, res) => {
     const query = {
       sub_dispatcher_id
     };
+
+    if (exclude_cancelled === 'true') {
+      query.cancelled = { $ne: true };
+    }
 
     if (date_from) {
       const from = new Date(date_from);

@@ -61,6 +61,11 @@ const calculateEndingMonday = (invoice) => {
 
 const INVOICES_PER_CARRIER = 10;
 const getTodayDateInput = () => new Date().toISOString().slice(0, 10);
+const toMoney = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.round((parsed + Number.EPSILON) * 100) / 100;
+};
 
 const PrintPage = () => {
   const [invoices, setInvoices] = useState([]);
@@ -76,6 +81,8 @@ const PrintPage = () => {
   const [expandedCarriers, setExpandedCarriers] = useState(new Set());
   const [paidModalInvoice, setPaidModalInvoice] = useState(null);
   const [paidDate, setPaidDate] = useState(getTodayDateInput());
+  const [paymentType, setPaymentType] = useState('full');
+  const [partialAmount, setPartialAmount] = useState('');
 
   const loadInvoices = async (filters = {}) => {
     setLoading(true);
@@ -148,25 +155,70 @@ const PrintPage = () => {
     }
   };
 
-  const handleTogglePaid = async (invoiceId, nextPaidState) => {
-    if (nextPaidState) {
-      const invoice = invoices.find((i) => i._id === invoiceId);
-      setPaidModalInvoice(invoice || null);
-      setPaidDate(invoice?.paid_date ? new Date(invoice.paid_date).toISOString().slice(0, 10) : getTodayDateInput());
+  const getInvoiceTotal = (invoice) => toMoney(
+    typeof invoice?.total === 'number'
+      ? invoice.total
+      : (invoice?.subtotal || 0)
+  );
+
+  const getPaidAmount = (invoice) => {
+    if (!invoice) return 0;
+    if (invoice.paid) return getInvoiceTotal(invoice);
+    return toMoney(invoice.paid_amount || 0);
+  };
+
+  const getRemainingAmount = (invoice) => {
+    const total = getInvoiceTotal(invoice);
+    const paidAmount = getPaidAmount(invoice);
+    return toMoney(Math.max(total - paidAmount, 0));
+  };
+
+  const isInvoiceOverdue = (invoice) => {
+    if (!invoice || invoice.paid) return false;
+    const invoiceDate = getInvoiceDate(invoice);
+    const parsedInvoiceDate = invoiceDate ? new Date(invoiceDate) : null;
+    if (!parsedInvoiceDate || Number.isNaN(parsedInvoiceDate.getTime())) return false;
+
+    const threshold = new Date();
+    threshold.setMonth(threshold.getMonth() - 3);
+    threshold.setHours(0, 0, 0, 0);
+
+    return parsedInvoiceDate < threshold;
+  };
+
+  const hasPartialPayment = (invoice) => {
+    if (!invoice || invoice.paid) return false;
+    return Boolean(invoice.is_partial_payment) || getPaidAmount(invoice) > 0;
+  };
+
+  const closePaidModal = (force = false) => {
+    if (!force && paidModalInvoice && togglingPaid === paidModalInvoice._id) return;
+    setPaidModalInvoice(null);
+    setPaidDate(getTodayDateInput());
+    setPaymentType('full');
+    setPartialAmount('');
+  };
+
+  const handleTogglePaid = async (invoice) => {
+    if (invoice.paid) {
+      setTogglingPaid(invoice._id);
+      try {
+        const updatedInvoice = await markInvoiceAsPaid(invoice._id, false, null);
+        setInvoices((prev) => prev.map((item) => (
+          item._id === invoice._id ? updatedInvoice : item
+        )));
+      } catch (error) {
+        alert('Failed to update paid status: ' + (error.response?.data?.error || error.message));
+      } finally {
+        setTogglingPaid(null);
+      }
       return;
     }
 
-    setTogglingPaid(invoiceId);
-    try {
-      const updatedInvoice = await markInvoiceAsPaid(invoiceId, false, null);
-      setInvoices((prev) => prev.map((invoice) => (
-        invoice._id === invoiceId ? updatedInvoice : invoice
-      )));
-    } catch (error) {
-      alert('Failed to update paid status: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setTogglingPaid(null);
-    }
+    setPaidModalInvoice(invoice || null);
+    setPaidDate(invoice?.paid_date ? new Date(invoice.paid_date).toISOString().slice(0, 10) : getTodayDateInput());
+    setPaymentType(hasPartialPayment(invoice) ? 'partial' : 'full');
+    setPartialAmount('');
   };
 
   const handleConfirmPaidDate = async () => {
@@ -177,13 +229,23 @@ const PrintPage = () => {
     }
 
     const invoiceId = paidModalInvoice._id;
+    const options = { paymentType };
+    if (paymentType === 'partial') {
+      const parsedPartialAmount = Number(partialAmount);
+      if (!Number.isFinite(parsedPartialAmount) || parsedPartialAmount <= 0) {
+        alert('Enter a valid partial payment amount greater than 0.');
+        return;
+      }
+      options.paymentAmount = toMoney(parsedPartialAmount);
+    }
+
     setTogglingPaid(invoiceId);
     try {
-      const updatedInvoice = await markInvoiceAsPaid(invoiceId, true, paidDate);
+      const updatedInvoice = await markInvoiceAsPaid(invoiceId, true, paidDate, options);
       setInvoices((prev) => prev.map((invoice) => (
         invoice._id === invoiceId ? updatedInvoice : invoice
       )));
-      setPaidModalInvoice(null);
+      closePaidModal(true);
     } catch (error) {
       alert('Failed to update paid status: ' + (error.response?.data?.error || error.message));
     } finally {
@@ -367,6 +429,12 @@ const PrintPage = () => {
                               <span className="badge paid">
                                 Paid{invoice.paid_date ? ` (${formatDate(invoice.paid_date)})` : ''}
                               </span>
+                            ) : isInvoiceOverdue(invoice) ? (
+                              <span className="badge overdue">Unpaid - Overdue</span>
+                            ) : hasPartialPayment(invoice) ? (
+                              <span className="badge partial">
+                                Partial - Remaining ${getRemainingAmount(invoice).toFixed(2)}
+                              </span>
                             ) : (
                               <span className="badge unpaid">Unpaid</span>
                             )}
@@ -374,14 +442,16 @@ const PrintPage = () => {
                           <td className="invoice-actions-cell">
                             <button
                               className={`table-btn ${invoice.paid ? 'unpaid-btn' : 'paid-btn'}`}
-                              onClick={() => handleTogglePaid(invoice._id, !invoice.paid)}
+                              onClick={() => handleTogglePaid(invoice)}
                               disabled={togglingPaid === invoice._id}
                             >
                               {togglingPaid === invoice._id
                                 ? '...'
                                 : invoice.paid
                                   ? 'Mark Unpaid'
-                                  : 'Mark Paid'}
+                                  : hasPartialPayment(invoice)
+                                    ? 'Update Payment'
+                                    : 'Mark Paid'}
                             </button>
                             <button
                               className="view-btn table-btn"
@@ -443,6 +513,11 @@ const PrintPage = () => {
             <p>
               <strong>{paidModalInvoice.invoice_number}</strong>
             </p>
+            <div className="paid-modal-amounts">
+              <p>Total: <strong>${getInvoiceTotal(paidModalInvoice).toFixed(2)}</strong></p>
+              <p>Already paid: <strong>${getPaidAmount(paidModalInvoice).toFixed(2)}</strong></p>
+              <p>Remaining: <strong>${getRemainingAmount(paidModalInvoice).toFixed(2)}</strong></p>
+            </div>
             <label htmlFor="paidDateInput">Paid date</label>
             <input
               id="paidDateInput"
@@ -450,11 +525,47 @@ const PrintPage = () => {
               value={paidDate}
               onChange={(e) => setPaidDate(e.target.value)}
             />
+            <div className="paid-type-options">
+              <label>
+                <input
+                  type="radio"
+                  name="paymentType"
+                  value="full"
+                  checked={paymentType === 'full'}
+                  onChange={() => setPaymentType('full')}
+                />
+                Mark as fully paid
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="paymentType"
+                  value="partial"
+                  checked={paymentType === 'partial'}
+                  onChange={() => setPaymentType('partial')}
+                />
+                Record partial payment
+              </label>
+            </div>
+            {paymentType === 'partial' && (
+              <>
+                <label htmlFor="partialAmountInput">Partial payment amount</label>
+                <input
+                  id="partialAmountInput"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={partialAmount}
+                  onChange={(e) => setPartialAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </>
+            )}
             <div className="paid-modal-actions">
               <button
                 type="button"
                 className="paid-modal-cancel-btn"
-                onClick={() => setPaidModalInvoice(null)}
+                onClick={closePaidModal}
                 disabled={togglingPaid === paidModalInvoice._id}
               >
                 Cancel

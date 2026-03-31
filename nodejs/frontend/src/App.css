@@ -6,10 +6,10 @@
 
 .main-content {
   flex: 1;
-  max-width: 1200px;
+  max-width: none;
   width: 100%;
-  margin: 0 auto;
-  padding: 2rem;
+  margin: 0;
+  padding: 1.25rem 1rem 2rem;
 }
 
 .loading-screen {

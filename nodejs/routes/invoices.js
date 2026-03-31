@@ -11,6 +11,11 @@ const fs = require('fs');
 const path = require('path');
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const EPSILON = 0.0001;
+
+function toCurrency(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
 
 // Filename format: "{Carrier Name} Invoice YYYY-MM-DD.pdf" or "... YYYY-MM-DD (PERSON NAME).pdf"
 const OLD_INVOICE_FILENAME_REGEX = /^(.+)\s+Invoice\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\.pdf$/i;
@@ -382,7 +387,7 @@ router.get('/:id/pdf', async (req, res) => {
 // Mark invoice as paid/unpaid
 router.patch('/:id/paid', async (req, res) => {
   try {
-    const { paid, paid_date } = req.body;
+    const { paid, paid_date, payment_type, payment_amount } = req.body;
 
     if (paid === undefined) {
       return res.status(400).json({ error: 'paid field is required' });
@@ -398,13 +403,46 @@ router.patch('/:id/paid', async (req, res) => {
       if (!paid_date) {
         return res.status(400).json({ error: 'paid_date is required when marking invoice as paid' });
       }
+
       const parsedPaidDate = new Date(`${paid_date}T00:00:00.000Z`);
       if (Number.isNaN(parsedPaidDate.getTime())) {
         return res.status(400).json({ error: 'paid_date must be a valid date (YYYY-MM-DD)' });
       }
-      invoice.paid_date = parsedPaidDate;
+
+      const invoiceTotal = toCurrency(invoice.total || invoice.balanceDue || 0);
+      const currentPaidAmount = toCurrency(invoice.paid_amount || 0);
+      const paymentType = payment_type === 'partial' ? 'partial' : 'full';
+
+      if (paymentType === 'partial') {
+        const parsedPaymentAmount = Number(payment_amount);
+        if (!Number.isFinite(parsedPaymentAmount) || parsedPaymentAmount <= 0) {
+          return res.status(400).json({ error: 'payment_amount must be a positive number for partial payments' });
+        }
+
+        const nextPaidAmount = toCurrency(currentPaidAmount + parsedPaymentAmount);
+        const remainingAfterPayment = toCurrency(Math.max(invoiceTotal - nextPaidAmount, 0));
+
+        invoice.paid_date = parsedPaidDate;
+        if (invoiceTotal > 0 && remainingAfterPayment <= EPSILON) {
+          // If partial catches up to full total, promote status to fully paid.
+          invoice.paid = true;
+          invoice.is_partial_payment = false;
+          invoice.paid_amount = invoiceTotal;
+        } else {
+          invoice.paid = false;
+          invoice.is_partial_payment = true;
+          invoice.paid_amount = nextPaidAmount;
+        }
+      } else {
+        invoice.paid = true;
+        invoice.paid_date = parsedPaidDate;
+        invoice.is_partial_payment = false;
+        invoice.paid_amount = invoiceTotal > 0 ? invoiceTotal : currentPaidAmount;
+      }
     } else {
       invoice.paid_date = null;
+      invoice.is_partial_payment = false;
+      invoice.paid_amount = 0;
     }
     await invoice.save();
 

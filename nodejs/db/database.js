@@ -398,6 +398,15 @@ const invoiceSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  is_partial_payment: {
+    type: Boolean,
+    default: false
+  },
+  paid_amount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   paid_date: {
     type: Date,
     default: null

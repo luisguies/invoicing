@@ -90,10 +90,11 @@ export const getLoadsLog = async (carrierId, dateFrom, dateTo) => {
   return response.data;
 };
 
-export const getSubDispatcherReport = async (subDispatcherId, dateFrom, dateTo) => {
+export const getSubDispatcherReport = async (subDispatcherId, dateFrom, dateTo, excludeCancelled = false) => {
   const params = { sub_dispatcher_id: subDispatcherId };
   if (dateFrom) params.date_from = dateFrom;
   if (dateTo) params.date_to = dateTo;
+  if (excludeCancelled) params.exclude_cancelled = 'true';
   const response = await api.get('/loads/sub-dispatcher-report', { params });
   return response.data;
 };
@@ -285,10 +286,16 @@ export const generateInvoice = async (invoiceData) => {
   return response.data;
 };
 
-export const markInvoiceAsPaid = async (id, paid, paidDate = null) => {
+export const markInvoiceAsPaid = async (id, paid, paidDate = null, options = {}) => {
   const payload = { paid };
   if (paid && paidDate) {
     payload.paid_date = paidDate;
+  }
+  if (paid && options.paymentType) {
+    payload.payment_type = options.paymentType;
+  }
+  if (paid && options.paymentAmount !== undefined && options.paymentAmount !== null && options.paymentAmount !== '') {
+    payload.payment_amount = options.paymentAmount;
   }
   const response = await api.patch(`/invoices/${id}/paid`, payload);
   return response.data;
