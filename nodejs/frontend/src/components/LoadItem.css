@@ -245,6 +245,24 @@
   color: #495057;
 }
 
+.load-edit-grid .load-edit-span-two {
+  grid-column: span 2;
+}
+
+.load-edit-grid .load-edit-checkbox,
+.cancel-load-modal .load-edit-checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0;
+}
+
+.load-edit-grid .load-edit-checkbox input,
+.cancel-load-modal .load-edit-checkbox input {
+  width: auto;
+}
+
 .load-edit-grid input {
   width: 100%;
   padding: 0.5rem;
@@ -277,4 +295,36 @@
 .load-edit-modal-actions button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+.cancel-load-modal {
+  width: min(520px, 100%);
+}
+
+.cancel-load-help {
+  margin: 0 0 1rem;
+  color: #666;
+}
+
+@media (max-width: 768px) {
+  .driver-cell,
+  .carrier-cell {
+    min-width: 0;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions button,
+  .driver-dropdown,
+  .carrier-dropdown,
+  .confirm-carrier-btn,
+  .sub-dispatcher-select {
+    width: 100%;
+  }
+
+  .alias-checkbox {
+    align-items: flex-start;
+  }
 }

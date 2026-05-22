@@ -1,6 +1,10 @@
 # Node.js Frontend + Backend Container
 FROM node:18
 
+# Python + openpyxl for nodejs/scripts/parse_old_loads_xlsx.py (Upload Old Invoices)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-openpyxl \
+  && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 

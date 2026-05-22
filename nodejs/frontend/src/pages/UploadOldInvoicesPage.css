@@ -18,6 +18,37 @@
   margin-bottom: 1.5rem;
 }
 
+.xlsx-import-box {
+  margin-bottom: 2rem;
+  padding: 1rem 1.25rem;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+}
+
+.xlsx-import-box h3 {
+  margin: 0 0 0.5rem 0;
+  color: #2c3e50;
+}
+
+.xlsx-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.25rem 0;
+}
+
+.checkbox-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkbox-option input {
+  width: auto;
+}
+
 .file-input {
   position: absolute;
   width: 0;
@@ -190,6 +221,12 @@
 .results-success {
   margin: 0 0 0.5rem 0;
   color: #155724;
+}
+
+.results-success-list {
+  margin: 0.5rem 0 0 1rem;
+  color: #155724;
+  font-size: 0.9rem;
 }
 
 .results-fail {
@@ -488,4 +525,65 @@
   gap: 1rem;
   margin-top: 1.5rem;
   align-items: center;
+}
+
+@media (max-width: 768px) {
+  .parsed-table thead,
+  .batch-review-table thead,
+  .confirm-lines-table thead {
+    display: none;
+  }
+
+  .parsed-table,
+  .parsed-table tbody,
+  .parsed-table tr,
+  .parsed-table td,
+  .batch-review-table,
+  .batch-review-table tbody,
+  .batch-review-table tr,
+  .batch-review-table td,
+  .confirm-lines-table,
+  .confirm-lines-table tbody,
+  .confirm-lines-table tr,
+  .confirm-lines-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .parsed-table tr,
+  .batch-review-table tr,
+  .confirm-lines-table tr {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    background: #fff;
+  }
+
+  .parsed-table td,
+  .batch-review-table td,
+  .confirm-lines-table td {
+    border-bottom: 1px solid #f1f3f5;
+  }
+
+  .parsed-table td:last-child,
+  .batch-review-table td:last-child,
+  .confirm-lines-table td:last-child {
+    border-bottom: none;
+  }
+
+  .parsed-table td::before,
+  .batch-review-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .confirm-lines-table input {
+    min-height: 2.2rem;
+  }
 }

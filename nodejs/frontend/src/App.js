@@ -13,6 +13,7 @@ import InvoicedLoadsPage from './pages/InvoicedLoadsPage';
 import CalendarPage from './pages/CalendarPage';
 import CompanyLoadLogPage from './pages/CompanyLoadLogPage';
 import SubDispatcherReportPage from './pages/SubDispatcherReportPage';
+import DriverBoardPage from './pages/DriverBoardPage';
 import { checkAuth } from './services/api';
 import './App.css';
 
@@ -56,6 +57,7 @@ function App() {
                 <Route path="/calendar" element={<CalendarPage />} />
                 <Route path="/company-load-log" element={<CompanyLoadLogPage />} />
                 <Route path="/sub-dispatcher-report" element={<SubDispatcherReportPage />} />
+                <Route path="/driver-board" element={<DriverBoardPage />} />
                 <Route path="/print" element={<PrintPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>

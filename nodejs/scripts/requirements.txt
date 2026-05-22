@@ -1,0 +1,3 @@
+# Used by parse_old_loads_xlsx.py (Upload Old Invoices). Install with:
+#   pip install -r nodejs/scripts/requirements.txt
+openpyxl>=3.1.0

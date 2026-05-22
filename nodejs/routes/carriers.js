@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { Carrier, Driver } = require('../db/database');
 
+function optionalTrim(v) {
+  if (v === undefined || v === null || String(v).trim() === '') return undefined;
+  return String(v).trim();
+}
+
 // Get all carriers
 router.get('/', async (req, res) => {
   try {
@@ -28,7 +33,17 @@ router.get('/:id', async (req, res) => {
 // Create new carrier
 router.post('/', async (req, res) => {
   try {
-    const { name, aliases, billTo } = req.body;
+    const {
+      name,
+      aliases,
+      billTo,
+      usdot,
+      mcNumber,
+      myCarrierPacketPassword,
+      rmisId,
+      rmisZip,
+      highwayPhone
+    } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Carrier name is required' });
@@ -37,7 +52,13 @@ router.post('/', async (req, res) => {
     const carrier = new Carrier({
       name: name.trim(),
       aliases: aliases || [],
-      billTo: billTo || {}
+      billTo: billTo || {},
+      usdot: optionalTrim(usdot),
+      mcNumber: optionalTrim(mcNumber),
+      myCarrierPacketPassword: optionalTrim(myCarrierPacketPassword),
+      rmisId: optionalTrim(rmisId),
+      rmisZip: optionalTrim(rmisZip),
+      highwayPhone: optionalTrim(highwayPhone)
     });
 
     await carrier.save();
@@ -54,13 +75,32 @@ router.post('/', async (req, res) => {
 // Update carrier
 router.put('/:id', async (req, res) => {
   try {
-    const { name, aliases, driver_ids, billTo } = req.body;
+    const {
+      name,
+      aliases,
+      driver_ids,
+      billTo,
+      usdot,
+      mcNumber,
+      myCarrierPacketPassword,
+      rmisId,
+      rmisZip,
+      highwayPhone
+    } = req.body;
     
     const updateData = {};
     if (name !== undefined) updateData.name = name.trim();
     if (aliases !== undefined) updateData.aliases = aliases;
     if (driver_ids !== undefined) updateData.driver_ids = driver_ids;
     if (billTo !== undefined) updateData.billTo = billTo;
+    if (usdot !== undefined) updateData.usdot = optionalTrim(usdot) ?? null;
+    if (mcNumber !== undefined) updateData.mcNumber = optionalTrim(mcNumber) ?? null;
+    if (myCarrierPacketPassword !== undefined) {
+      updateData.myCarrierPacketPassword = optionalTrim(myCarrierPacketPassword) ?? null;
+    }
+    if (rmisId !== undefined) updateData.rmisId = optionalTrim(rmisId) ?? null;
+    if (rmisZip !== undefined) updateData.rmisZip = optionalTrim(rmisZip) ?? null;
+    if (highwayPhone !== undefined) updateData.highwayPhone = optionalTrim(highwayPhone) ?? null;
 
     const carrier = await Carrier.findByIdAndUpdate(
       req.params.id,

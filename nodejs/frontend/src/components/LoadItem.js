@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { formatDate, formatDateInput, parseDateInputToUtcDate } from '../utils/dateUtils';
-import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver, markLoadAsInvoiced, getLoadRateConfirmationUrl, patchLoadSubDispatcher } from '../services/api';
+import { updateLoad, cancelLoad, updateLoadCarrier, getCarriers, patchLoadDriver, markLoadAsInvoiced, patchLoadSubDispatcher } from '../services/api';
+import RateConfirmationModal from './RateConfirmationModal';
+import { getLoadTotalCarrierPay } from '../utils/loadPayUtils';
 import './LoadItem.css';
 
 const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = false, ensureDriversLoaded, subDispatchers = [] }) => {
@@ -11,9 +13,15 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
   const [selectedCarrierId, setSelectedCarrierId] = useState('');
   const [saveAlias, setSaveAlias] = useState(false);
   const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [rateConfirmationOpen, setRateConfirmationOpen] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelTonuChecked, setCancelTonuChecked] = useState(false);
+  const [cancelTonuAmount, setCancelTonuAmount] = useState('');
   const [formData, setFormData] = useState({
     load_number: load.load_number,
     carrier_pay: load.carrier_pay,
+    tonu: !!load.tonu,
+    detention_rate: load.detention_rate ?? '',
     pickup_date: formatDateInput(load.pickup_date),
     delivery_date: formatDateInput(load.delivery_date),
     pickup_city: load.pickup_city,
@@ -78,6 +86,16 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
     }
   }, [carrierId, ensureDriversLoaded]);
 
+  const driverList = Array.isArray(drivers) ? drivers : [];
+  const selectedDriverIdStr = selectedDriverId ? String(selectedDriverId) : '';
+  const driverIdsInList = new Set(driverList.map((d) => String(d._id)));
+  const assignedDriverPopulated =
+    load.driver_id && typeof load.driver_id === 'object' && load.driver_id._id != null
+      ? load.driver_id
+      : null;
+  const showSelectedDriverNotInList =
+    Boolean(selectedDriverIdStr) && !driverIdsInList.has(selectedDriverIdStr);
+
   const loadCarriers = async () => {
     try {
       const carriersList = await getCarriers();
@@ -100,8 +118,17 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
         alert('Invalid date format. Please use the date picker.');
         return;
       }
+      const detentionRate =
+        formData.detention_rate === '' || formData.detention_rate === null || formData.detention_rate === undefined
+          ? 0
+          : Number(formData.detention_rate);
+      if (!Number.isFinite(detentionRate) || detentionRate < 0) {
+        alert('Detention rate must be 0 or a positive number.');
+        return;
+      }
       const updatedLoad = await updateLoad(load._id, {
         ...formData,
+        detention_rate: detentionRate,
         pickup_date: pickupUtc,
         delivery_date: deliveryUtc
       });
@@ -115,10 +142,26 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
   };
 
   const handleCancel = async () => {
+    if (!load.cancelled && cancelTonuChecked) {
+      const parsed = Number(cancelTonuAmount);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        alert('TONU amount must be 0 or a positive number.');
+        return;
+      }
+    }
     setLoading(true);
     try {
-      const updatedLoad = await cancelLoad(load._id, !load.cancelled);
+      const options = cancelTonuChecked
+        ? {
+            tonuReceived: true,
+            tonuAmount: cancelTonuAmount
+          }
+        : {};
+      const updatedLoad = await cancelLoad(load._id, !load.cancelled, options);
       onUpdate(updatedLoad, { refresh: true });
+      setCancelModalOpen(false);
+      setCancelTonuChecked(false);
+      setCancelTonuAmount('');
     } catch (error) {
       alert('Failed to update load: ' + (error.response?.data?.error || error.message));
     } finally {
@@ -193,13 +236,34 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
 
   const handleViewRateConfirmation = () => {
     if (!hasRateConfirmationPath) return;
-    window.open(getLoadRateConfirmationUrl(load._id), '_blank', 'noopener,noreferrer');
+    setRateConfirmationOpen(true);
+  };
+
+  const openCancelModal = () => {
+    setCancelTonuChecked(false);
+    setCancelTonuAmount(load.tonu_received ? String(load.carrier_pay || '') : '');
+    setCancelModalOpen(true);
+  };
+
+  const closeCancelModal = () => {
+    if (loading) return;
+    setCancelModalOpen(false);
+  };
+
+  const handleCancelButtonClick = () => {
+    if (load.cancelled) {
+      handleCancel();
+      return;
+    }
+    openCancelModal();
   };
 
   const openEditModal = () => {
     setFormData({
       load_number: load.load_number,
       carrier_pay: load.carrier_pay,
+      tonu: !!load.tonu,
+      detention_rate: load.detention_rate ?? '',
       pickup_date: formatDateInput(load.pickup_date),
       delivery_date: formatDateInput(load.delivery_date),
       pickup_city: load.pickup_city,
@@ -228,10 +292,23 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
     return () => document.removeEventListener('keydown', handleEsc);
   }, [editing, loading]);
 
+  useEffect(() => {
+    if (!cancelModalOpen) return undefined;
+
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        closeCancelModal();
+      }
+    };
+
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [cancelModalOpen, loading]);
+
   return (
     <>
       <tr className={`load-item ${load.cancelled ? 'cancelled' : ''} ${hasDriverConflicts ? 'driver-conflict' : ''} ${hasDuplicateConflicts ? 'duplicate-conflict' : ''} ${needsCarrierReview ? 'needs-review' : ''}`}>
-        <td>
+        <td data-label="Load #">
           {hasDriverConflicts && (
             <span className="warning-icon" title={driverConflictDetails || 'Driver conflict detected'}>👤⚠️</span>
           )}
@@ -243,12 +320,12 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
           )}
           {load.load_number}
         </td>
-        <td>{formatDate(load.pickup_date)}</td>
-        <td>{formatDate(load.delivery_date)}</td>
-        <td>{load.pickup_city}, {load.pickup_state}</td>
-        <td>{load.delivery_city}, {load.delivery_state}</td>
-        <td className="amount">${load.carrier_pay?.toFixed(2)}</td>
-        <td className="driver-cell">
+        <td data-label="Pickup Date">{formatDate(load.pickup_date)}</td>
+        <td data-label="Delivery Date">{formatDate(load.delivery_date)}</td>
+        <td data-label="Origin">{load.pickup_city}, {load.pickup_state}</td>
+        <td data-label="Destination">{load.delivery_city}, {load.delivery_state}</td>
+        <td className="amount" data-label="Amount">${getLoadTotalCarrierPay(load).toFixed(2)}</td>
+        <td className="driver-cell" data-label="Driver">
           <select
             className="driver-dropdown"
             value={selectedDriverId}
@@ -257,22 +334,23 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
             title={!carrierId ? 'Assign a carrier first' : undefined}
           >
             <option value="">UNASSIGNED</option>
-            {/* If a driver is already assigned but we haven't loaded the list yet, keep the selection stable */}
-            {selectedDriverId &&
-              (!Array.isArray(drivers) || drivers.length === 0) && (
-                <option value={selectedDriverId}>
-                  {driversLoading ? 'Loading…' : 'Assigned (unknown)'}
-                </option>
-              )}
-            {Array.isArray(drivers) &&
-              drivers.map((d) => (
-                <option key={d._id} value={d._id}>
-                  {d.name}
-                </option>
-              ))}
+            {showSelectedDriverNotInList && (
+              <option value={selectedDriverIdStr}>
+                {driversLoading
+                  ? 'Loading…'
+                  : assignedDriverPopulated?.name
+                    ? `${assignedDriverPopulated.name} (inactive)`
+                    : 'Assigned (unknown)'}
+              </option>
+            )}
+            {driverList.map((d) => (
+              <option key={d._id} value={d._id}>
+                {d.name}
+              </option>
+            ))}
           </select>
         </td>
-        <td className="sub-dispatcher-cell">
+        <td className="sub-dispatcher-cell" data-label="Sub-dispatcher">
           <select
             className="sub-dispatcher-select"
             value={currentSubDispatcherId}
@@ -288,7 +366,7 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
             ))}
           </select>
         </td>
-        <td className="carrier-cell">
+        <td className="carrier-cell" data-label="Carrier">
           {needsCarrierReview ? (
             <div className="carrier-selector">
               <div className="carrier-info">
@@ -332,7 +410,7 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
             </span>
           )}
         </td>
-        <td className="invoiced-cell">
+        <td className="invoiced-cell" data-label="Invoiced">
           <input
             type="checkbox"
             checked={load.invoiced || false}
@@ -342,7 +420,7 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
             className="invoiced-checkbox"
           />
         </td>
-        <td className="actions">
+        <td className="actions" data-label="Actions">
           <button
             onClick={handleViewRateConfirmation}
             disabled={loading || !hasRateConfirmationPath}
@@ -353,7 +431,7 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
           </button>
           <button
             className={load.cancelled ? 'uncancel-btn' : 'cancel-btn'}
-            onClick={handleCancel}
+            onClick={handleCancelButtonClick}
             disabled={loading}
           >
             {load.cancelled ? 'Uncancel' : 'Cancel'}
@@ -395,7 +473,27 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
                   type="number"
                   step="0.01"
                   value={formData.carrier_pay}
-                  onChange={(e) => setFormData({ ...formData, carrier_pay: parseFloat(e.target.value) })}
+                  onChange={(e) => setFormData({ ...formData, carrier_pay: e.target.value })}
+                  disabled={loading}
+                />
+              </label>
+              <label>
+                Detention Rate
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.detention_rate}
+                  onChange={(e) => setFormData({ ...formData, detention_rate: e.target.value })}
+                  disabled={loading}
+                />
+              </label>
+              <label className="load-edit-checkbox load-edit-span-two">
+                <span>TONU</span>
+                <input
+                  type="checkbox"
+                  checked={!!formData.tonu}
+                  onChange={(e) => setFormData({ ...formData, tonu: e.target.checked })}
                   disabled={loading}
                 />
               </label>
@@ -467,6 +565,54 @@ const LoadItem = ({ load, onUpdate, onDelete, drivers = [], driversLoading = fal
           </div>
         </div>,
         document.body
+      )}
+
+      {cancelModalOpen && typeof document !== 'undefined' && createPortal(
+        <div className="load-edit-modal-backdrop" onClick={closeCancelModal}>
+          <div className="load-edit-modal cancel-load-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Cancel Load {load.load_number}</h3>
+            <p className="cancel-load-help">
+              Cancelling removes the load from normal invoice generation and conflict checks.
+            </p>
+            <label className="load-edit-checkbox">
+              <span>Add TONU</span>
+              <input
+                type="checkbox"
+                checked={cancelTonuChecked}
+                onChange={(e) => setCancelTonuChecked(e.target.checked)}
+                disabled={loading}
+              />
+            </label>
+            {cancelTonuChecked && (
+              <label>
+                TONU Amount
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cancelTonuAmount}
+                  onChange={(e) => setCancelTonuAmount(e.target.value)}
+                  disabled={loading}
+                />
+              </label>
+            )}
+            <div className="load-edit-modal-actions">
+              <button onClick={closeCancelModal} disabled={loading}>Back</button>
+              <button className="save-btn" onClick={handleCancel} disabled={loading}>
+                {loading ? 'Saving...' : 'Confirm Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {rateConfirmationOpen && (
+        <RateConfirmationModal
+          loadId={load._id}
+          loadNumber={load.load_number}
+          onClose={() => setRateConfirmationOpen(false)}
+        />
       )}
     </>
   );

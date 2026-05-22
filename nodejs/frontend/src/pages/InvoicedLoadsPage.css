@@ -203,3 +203,52 @@
 .unmark-invoiced-btn:active {
   background-color: #d39e00;
 }
+
+@media (max-width: 768px) {
+  .invoiced-loads-table thead {
+    display: none;
+  }
+
+  .invoiced-loads-table,
+  .invoiced-loads-table tbody,
+  .invoiced-loads-table tr,
+  .invoiced-loads-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .invoiced-loads-table tr {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+
+  .invoiced-loads-table td {
+    border-bottom: 1px solid #f1f3f5;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .invoiced-loads-table td:last-child {
+    border-bottom: none;
+  }
+
+  .invoiced-loads-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .sub-dispatcher-select,
+  .view-rate-confirmation-btn,
+  .unmark-invoiced-btn {
+    width: 100%;
+    margin: 0 0 0.4rem 0;
+  }
+}

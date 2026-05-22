@@ -99,6 +99,20 @@ const loadSchema = new mongoose.Schema({
     default: null,
     trim: true
   },
+  tonu: {
+    type: Boolean,
+    default: false
+  },
+  tonu_received: {
+    type: Boolean,
+    default: false
+  },
+  detention_rate: {
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0
+  },
   cancelled: {
     type: Boolean,
     default: false
@@ -164,6 +178,36 @@ const carrierSchema = new mongoose.Schema({
     cityStateZip: { type: String, trim: true },
     phone: { type: String, trim: true }
   },
+  usdot: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  mcNumber: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  myCarrierPacketPassword: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  rmisId: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  rmisZip: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  highwayPhone: {
+    type: String,
+    trim: true,
+    required: false
+  },
   driver_ids: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Driver'
@@ -210,6 +254,102 @@ const driverSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Carrier',
     required: true
+  },
+  phone: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  phone2: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  email: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  positionDriver: {
+    type: Boolean,
+    default: true
+  },
+  positionOwner: {
+    type: Boolean,
+    default: false
+  },
+  truckType: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  truckNumber: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  trailerNumber: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  tagTarp4ft: {
+    type: Boolean,
+    default: false
+  },
+  tagTarp6ft: {
+    type: Boolean,
+    default: false
+  },
+  tagTarp8ft: {
+    type: Boolean,
+    default: false
+  },
+  tagTwic: {
+    type: Boolean,
+    default: false
+  },
+  tagTanker: {
+    type: Boolean,
+    default: false
+  },
+  tagPipeStakes: {
+    type: Boolean,
+    default: false
+  },
+  hardwood4x4Count: {
+    type: Number,
+    required: false,
+    min: 0
+  },
+  softwood4x4Count: {
+    type: Number,
+    required: false,
+    min: 0
+  },
+  chainCount: {
+    type: Number,
+    required: false,
+    min: 0
+  },
+  coilRackCount: {
+    type: Number,
+    required: false,
+    min: 0
+  },
+  active: {
+    type: Boolean,
+    default: true
+  },
+  needsLoad: {
+    type: String,
+    trim: true,
+    required: false
+  },
+  notes: {
+    type: String,
+    trim: true,
+    required: false
   },
   created_at: {
     type: Date,

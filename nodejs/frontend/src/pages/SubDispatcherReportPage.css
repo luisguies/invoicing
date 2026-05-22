@@ -63,6 +63,11 @@
   min-width: 140px;
 }
 
+.form-row.rate-row input {
+  min-width: 100px;
+  max-width: 120px;
+}
+
 .form-row.checkbox-row {
   justify-content: center;
   min-height: 38px;
@@ -151,6 +156,13 @@
   font-size: 0.95rem;
 }
 
+.report-rate-summary {
+  margin: 0.35rem 0 0;
+  color: #2c3e50;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .no-loads {
   padding: 2rem;
   text-align: center;
@@ -207,6 +219,14 @@
   font-size: 1.05rem;
 }
 
+.report-table tfoot .rate-total-row {
+  background: #e8f4fd;
+}
+
+.report-table tfoot .rate-total-row .rate-amount {
+  color: #0056b3;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -234,4 +254,45 @@
 
 .print-only {
   display: none;
+}
+
+@media (max-width: 768px) {
+  .report-table thead,
+  .report-table tfoot {
+    display: none;
+  }
+
+  .report-table,
+  .report-table tbody,
+  .report-table tr,
+  .report-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .report-table tr {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    background: #fff;
+  }
+
+  .report-table td {
+    border-bottom: 1px solid #f1f3f5;
+  }
+
+  .report-table td:last-child {
+    border-bottom: none;
+  }
+
+  .report-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
 }

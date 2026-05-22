@@ -396,9 +396,18 @@ const PrintPage = () => {
             const isExpanded = expandedCarriers.has(company);
             const visible = isExpanded ? companyInvoices : companyInvoices.slice(0, INVOICES_PER_CARRIER);
             const hasMore = companyInvoices.length > INVOICES_PER_CARRIER;
+            const companyCurrentOwed = companyInvoices.reduce(
+              (sum, inv) => sum + getRemainingAmount(inv),
+              0
+            );
             return (
               <div key={company} className="invoice-company-group">
-                <h3 className="company-header">{company}</h3>
+                <div className="company-header-row">
+                  <h3 className="company-header">{company}</h3>
+                  <span className="company-current-owed">
+                    Current Owed: ${companyCurrentOwed.toFixed(2)}
+                  </span>
+                </div>
                 <div className="invoice-table-wrap">
                   <table className="invoice-table">
                     <thead>
@@ -414,17 +423,17 @@ const PrintPage = () => {
                     <tbody>
                       {visible.map((invoice) => (
                         <tr key={invoice._id}>
-                          <td>{formatDate(getInvoiceDate(invoice))}</td>
-                          <td>{invoice.invoice_number}</td>
-                          <td>{invoice.load_ids?.length ?? 0}</td>
-                          <td>
+                          <td data-label="Date">{formatDate(getInvoiceDate(invoice))}</td>
+                          <td data-label="Invoice #">{invoice.invoice_number}</td>
+                          <td data-label="Loads">{invoice.load_ids?.length ?? 0}</td>
+                          <td data-label="Total">
                             $
                             {(typeof invoice.total === 'number'
                               ? invoice.total
                               : (invoice.subtotal || 0)
                             ).toFixed(2)}
                           </td>
-                          <td>
+                          <td data-label="Paid">
                             {invoice.paid ? (
                               <span className="badge paid">
                                 Paid{invoice.paid_date ? ` (${formatDate(invoice.paid_date)})` : ''}
@@ -439,7 +448,7 @@ const PrintPage = () => {
                               <span className="badge unpaid">Unpaid</span>
                             )}
                           </td>
-                          <td className="invoice-actions-cell">
+                          <td className="invoice-actions-cell" data-label="Actions">
                             <button
                               className={`table-btn ${invoice.paid ? 'unpaid-btn' : 'paid-btn'}`}
                               onClick={() => handleTogglePaid(invoice)}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './PDFViewer.css';
 
-const PDFViewer = ({ pdfUrl, invoiceNumber }) => {
+const PDFViewer = ({ pdfUrl, invoiceNumber, documentTitle }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -29,7 +29,7 @@ const PDFViewer = ({ pdfUrl, invoiceNumber }) => {
       )}
       <iframe
         src={pdfUrl}
-        title={`Invoice ${invoiceNumber}`}
+        title={documentTitle || `Invoice ${invoiceNumber}`}
         className="pdf-iframe"
         onLoad={handleLoad}
         onError={handleError}

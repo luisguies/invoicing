@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { getDispatchers, getSubDispatcherReport } from '../services/api';
+import { getDispatchers, getSettings, getSubDispatcherReport } from '../services/api';
 import { formatDate } from '../utils/dateUtils';
+import { getLoadTotalCarrierPay } from '../utils/loadPayUtils';
 import './SubDispatcherReportPage.css';
 
 const SubDispatcherReportPage = () => {
@@ -9,6 +10,7 @@ const SubDispatcherReportPage = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [excludeCancelled, setExcludeCancelled] = useState(true);
+  const [ratePercent, setRatePercent] = useState('');
   const [loads, setLoads] = useState([]);
   const [totalAmount, setTotalAmount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -16,19 +18,25 @@ const SubDispatcherReportPage = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchDispatchers = async () => {
+    const fetchInitialData = async () => {
       try {
-        const allDispatchers = await getDispatchers();
+        const [allDispatchers, settings] = await Promise.all([
+          getDispatchers(),
+          getSettings().catch(() => null),
+        ]);
         const onlySubDispatchers = (allDispatchers || []).filter((d) => d.parent_id);
         setSubDispatchers(onlySubDispatchers);
         if (onlySubDispatchers.length > 0) {
           setSubDispatcherId(onlySubDispatchers[0]._id);
         }
+        if (settings?.defaultRate != null) {
+          setRatePercent(String(settings.defaultRate));
+        }
       } catch (err) {
         setError(err.response?.data?.error || err.message || 'Failed to load sub-dispatchers');
       }
     };
-    fetchDispatchers();
+    fetchInitialData();
   }, []);
 
   const handleGenerate = async () => {
@@ -65,6 +73,11 @@ const SubDispatcherReportPage = () => {
   };
 
   const selectedSubDispatcher = subDispatchers.find((d) => d._id === subDispatcherId);
+
+  const parsedRatePercent = parseFloat(ratePercent);
+  const ratePercentValid =
+    ratePercent !== '' && Number.isFinite(parsedRatePercent) && parsedRatePercent >= 0;
+  const subDispatcherPay = ratePercentValid ? totalAmount * (parsedRatePercent / 100) : null;
 
   return (
     <div className="sub-dispatcher-report-page">
@@ -126,6 +139,21 @@ const SubDispatcherReportPage = () => {
           </label>
         </div>
 
+        <div className="form-row rate-row">
+          <label htmlFor="ratePercent">Sub-dispatcher rate (%)</label>
+          <input
+            id="ratePercent"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={ratePercent}
+            onChange={(e) => setRatePercent(e.target.value)}
+            disabled={loading}
+            placeholder="e.g. 5"
+          />
+        </div>
+
         <div className="form-actions">
           <button type="button" className="generate-btn" onClick={handleGenerate} disabled={loading}>
             {loading ? 'Loading...' : 'Generate report'}
@@ -157,6 +185,11 @@ const SubDispatcherReportPage = () => {
                         ? `Through ${formatDate(dateTo)}`
                         : 'All dates'}
                 </p>
+                {ratePercentValid && (
+                  <p className="report-rate-summary">
+                    Sub-dispatcher rate: {parsedRatePercent}% — ${subDispatcherPay.toFixed(2)}
+                  </p>
+                )}
               </div>
 
               <table className="report-table">
@@ -175,14 +208,14 @@ const SubDispatcherReportPage = () => {
                 <tbody>
                   {loads.map((load) => (
                     <tr key={load._id} className={load.cancelled ? 'cancelled' : ''}>
-                      <td>{load.load_number}</td>
-                      <td>{load.carrier_id?.name || '-'}</td>
-                      <td>{load.driver_id?.name || '-'}</td>
-                      <td>{formatDate(load.pickup_date)}</td>
-                      <td>{formatDate(load.delivery_date)}</td>
-                      <td>{[load.pickup_city, load.pickup_state].filter(Boolean).join(', ') || '-'}</td>
-                      <td>{[load.delivery_city, load.delivery_state].filter(Boolean).join(', ') || '-'}</td>
-                      <td className="num">${(Number(load.carrier_pay) || 0).toFixed(2)}</td>
+                      <td data-label="Load #">{load.load_number}</td>
+                      <td data-label="Carrier">{load.carrier_id?.name || '-'}</td>
+                      <td data-label="Driver">{load.driver_id?.name || '-'}</td>
+                      <td data-label="Pickup date">{formatDate(load.pickup_date)}</td>
+                      <td data-label="Delivery date">{formatDate(load.delivery_date)}</td>
+                      <td data-label="Origin">{[load.pickup_city, load.pickup_state].filter(Boolean).join(', ') || '-'}</td>
+                      <td data-label="Destination">{[load.delivery_city, load.delivery_state].filter(Boolean).join(', ') || '-'}</td>
+                      <td className="num" data-label="Amount">${getLoadTotalCarrierPay(load).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -191,6 +224,14 @@ const SubDispatcherReportPage = () => {
                     <td colSpan="7" className="total-label">Total generated</td>
                     <td className="num total-amount">${totalAmount.toFixed(2)}</td>
                   </tr>
+                  {ratePercentValid && (
+                    <tr className="rate-total-row">
+                      <td colSpan="7" className="total-label">
+                        Sub-dispatcher rate ({parsedRatePercent}%)
+                      </td>
+                      <td className="num total-amount rate-amount">${subDispatcherPay.toFixed(2)}</td>
+                    </tr>
+                  )}
                 </tfoot>
               </table>
             </>

@@ -1,0 +1,69 @@
+.rate-confirmation-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.rate-confirmation-modal-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.rate-confirmation-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: white;
+  padding: 1rem;
+  border-radius: 4px 4px 0 0;
+  flex-shrink: 0;
+}
+
+.rate-confirmation-modal-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+}
+
+.rate-confirmation-modal-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: #666;
+  line-height: 1;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.rate-confirmation-modal-close:hover {
+  background-color: #f0f0f0;
+}
+
+.rate-confirmation-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rate-confirmation-modal-body .pdf-viewer {
+  flex: 1;
+  min-height: 320px;
+  height: min(800px, calc(100vh - 140px));
+}

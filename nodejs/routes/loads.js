@@ -9,6 +9,7 @@ const { recalculateDuplicateConflictsForCarrierLoadNumber, checkAndUpdateDuplica
 const { refreshConflictsForLoads } = require('../services/conflictRefreshService');
 const { createCarrierAlias } = require('../services/carrierResolutionService');
 const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
+const { applyTonuLocationRules, getLoadTotalCarrierPay } = require('../services/loadPayService');
 
 function safeLower(s) {
   return (s || '').toString().toLowerCase();
@@ -17,6 +18,19 @@ function safeLower(s) {
 function deriveRateConfirmationPath(loadData) {
   const explicitPath = (loadData?.rate_confirmation_path || '').toString().trim();
   return explicitPath ? explicitPath.replace(/\\/g, '/') : null;
+}
+
+function normalizeLoadPayload(loadData = {}) {
+  const next = { ...loadData };
+  next.tonu = next.tonu === true || next.tonu === 'true';
+  next.tonu_received = next.tonu_received === true || next.tonu_received === 'true';
+
+  if (Object.prototype.hasOwnProperty.call(next, 'detention_rate')) {
+    const parsedDetention = Number(next.detention_rate);
+    next.detention_rate = Number.isFinite(parsedDetention) && parsedDetention >= 0 ? parsedDetention : 0;
+  }
+
+  return applyTonuLocationRules(next);
 }
 
 function toAbsoluteRateConfirmationPath(rateConfirmationPath) {
@@ -323,7 +337,7 @@ router.get('/sub-dispatcher-report', async (req, res) => {
       .populate('sub_dispatcher_id', 'name parent_id')
       .sort({ pickup_date: 1 });
 
-    const totalAmount = loads.reduce((sum, load) => sum + (Number(load.carrier_pay) || 0), 0);
+    const totalAmount = loads.reduce((sum, load) => sum + getLoadTotalCarrierPay(load), 0);
 
     res.json({
       loads,
@@ -377,7 +391,7 @@ router.get('/:id/conflicts', async (req, res) => {
 // Create new load
 router.post('/', async (req, res) => {
   try {
-    const loadData = req.body;
+    const loadData = normalizeLoadPayload(req.body);
     loadData.rate_confirmation_path = deriveRateConfirmationPath(loadData);
 
     // Auto-assign invoice fields if we have both dates.
@@ -490,7 +504,7 @@ router.put('/:id', async (req, res) => {
     const oldLoadNumber = load.load_number;
 
     // Update load
-    Object.assign(load, req.body);
+    Object.assign(load, normalizeLoadPayload(req.body));
 
     // Auto-recompute invoice fields if we have both dates after update.
     if (load.pickup_date && load.delivery_date) {
@@ -628,7 +642,11 @@ router.patch('/:id', async (req, res) => {
 // Mark load as cancelled/uncancelled
 router.patch('/:id/cancel', async (req, res) => {
   try {
-    const { cancelled } = req.body;
+    const {
+      cancelled,
+      tonu_received,
+      tonu_amount
+    } = req.body;
     
     const load = await Load.findById(req.params.id);
     if (!load) {
@@ -640,6 +658,19 @@ router.patch('/:id/cancel', async (req, res) => {
     const oldLoadNumber = load.load_number;
 
     load.cancelled = cancelled !== undefined ? cancelled : !load.cancelled;
+    if (load.cancelled && (tonu_received === true || tonu_received === 'true')) {
+      const parsedTonuAmount = Number(tonu_amount);
+      if (!Number.isFinite(parsedTonuAmount) || parsedTonuAmount < 0) {
+        return res.status(400).json({ error: 'tonu_amount must be a valid number when TONU is checked' });
+      }
+      load.tonu = true;
+      load.tonu_received = true;
+      load.detention_rate = 0;
+      load.carrier_pay = parsedTonuAmount;
+      applyTonuLocationRules(load);
+    } else if (!load.cancelled) {
+      load.tonu_received = false;
+    }
     await load.save();
 
     // If cancelling, remove from other loads' conflict lists

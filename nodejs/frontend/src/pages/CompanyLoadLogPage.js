@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getCarriers, getLoadsLog } from '../services/api';
 import { formatDate } from '../utils/dateUtils';
+import { getLoadTotalCarrierPay } from '../utils/loadPayUtils';
 import './CompanyLoadLogPage.css';
 
 const CompanyLoadLogPage = () => {
@@ -53,7 +54,7 @@ const CompanyLoadLogPage = () => {
   };
 
   const selectedCarrier = carriers.find((c) => c._id === carrierId);
-  const totalPay = loads.reduce((sum, l) => sum + (Number(l.carrier_pay) || 0), 0);
+  const totalPay = loads.reduce((sum, l) => sum + getLoadTotalCarrierPay(l), 0);
 
   return (
     <div className="company-load-log-page">
@@ -154,18 +155,18 @@ const CompanyLoadLogPage = () => {
                 <tbody>
                   {loads.map((load) => (
                     <tr key={load._id} className={load.cancelled ? 'cancelled' : ''}>
-                      <td>{load.load_number}</td>
-                      <td>{load.driver_id?.name ?? '—'}</td>
-                      <td>{formatDate(load.pickup_date)}</td>
-                      <td>{formatDate(load.delivery_date)}</td>
-                      <td>
+                      <td data-label="Load #">{load.load_number}</td>
+                      <td data-label="Driver">{load.driver_id?.name ?? '—'}</td>
+                      <td data-label="Pickup date">{formatDate(load.pickup_date)}</td>
+                      <td data-label="Delivery date">{formatDate(load.delivery_date)}</td>
+                      <td data-label="Origin">
                         {[load.pickup_city, load.pickup_state].filter(Boolean).join(', ') || '—'}
                       </td>
-                      <td>
+                      <td data-label="Destination">
                         {[load.delivery_city, load.delivery_state].filter(Boolean).join(', ') || '—'}
                       </td>
-                      <td className="num">${(Number(load.carrier_pay) || 0).toFixed(2)}</td>
-                      <td>
+                      <td className="num" data-label="Carrier pay">${getLoadTotalCarrierPay(load).toFixed(2)}</td>
+                      <td data-label="Status">
                         {load.cancelled ? (
                           <span className="badge cancelled">Cancelled</span>
                         ) : load.invoiced ? (

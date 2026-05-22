@@ -1,16 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { uploadOldInvoice, extractOldInvoice, saveExtractedInvoice } from '../services/api';
+import { uploadOldInvoice, extractOldInvoice, saveExtractedInvoice, importOldLoadsWorkbook } from '../services/api';
+import { parseOldInvoiceUploadFilename } from '../utils/invoiceFilenameParse';
 import './UploadOldInvoicesPage.css';
 
-// Optional "(PERSON NAME)" at end of filename is ignored
-const OLD_INVOICE_FILENAME_REGEX = /^(.+)\s+Invoice\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\.pdf$/i;
-
 function parseFilename(name) {
-  const base = name.endsWith('.pdf') ? name : name + '.pdf';
-  const match = base.match(OLD_INVOICE_FILENAME_REGEX);
-  if (!match) return null;
-  return { carrierName: match[1].trim(), dateStr: match[2] };
+  return parseOldInvoiceUploadFilename(name);
 }
 
 function ensureGroups(data) {
@@ -52,7 +47,16 @@ const UploadOldInvoicesPage = () => {
   const [previewingAmounts, setPreviewingAmounts] = useState(false);
   const [extractedList, setExtractedList] = useState([]); // [{ file, data?, error? }] after batch extract
   const [batchConfirmResults, setBatchConfirmResults] = useState(null); // { success: [], fail: [] } after Confirm
+  const [workbookFile, setWorkbookFile] = useState(null);
+  const [importingWorkbook, setImportingWorkbook] = useState(false);
+  const [workbookOptions, setWorkbookOptions] = useState({
+    markLoadsInvoiced: false,
+    createInvoices: false,
+    markInvoicesPaid: false
+  });
+  const [workbookResults, setWorkbookResults] = useState(null);
   const fileInputRef = useRef(null);
+  const workbookInputRef = useRef(null);
   const navigate = useNavigate();
 
   const parsed = files.map((file) => ({
@@ -71,6 +75,43 @@ const UploadOldInvoicesPage = () => {
     setAmountsByFilename({});
     setExtractedList([]);
     setBatchConfirmResults(null);
+  };
+
+  const handleWorkbookFileChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setWorkbookFile(file);
+    setWorkbookResults(null);
+    setError(null);
+  };
+
+  const handleWorkbookOptionChange = (key, checked) => {
+    setWorkbookOptions((prev) => {
+      const next = { ...prev, [key]: checked };
+      if (!next.createInvoices) {
+        next.markInvoicesPaid = false;
+      }
+      return next;
+    });
+  };
+
+  const handleImportWorkbook = async () => {
+    if (!workbookFile) {
+      setError('Select an .xlsx workbook first.');
+      return;
+    }
+    setImportingWorkbook(true);
+    setError(null);
+    setWorkbookResults(null);
+    try {
+      const result = await importOldLoadsWorkbook(workbookFile, workbookOptions);
+      setWorkbookResults(result);
+      setWorkbookFile(null);
+      if (workbookInputRef.current) workbookInputRef.current.value = '';
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Workbook import failed');
+    } finally {
+      setImportingWorkbook(false);
+    }
   };
 
   const handleBatchExtract = async () => {
@@ -212,7 +253,7 @@ const UploadOldInvoicesPage = () => {
   const handleUpload = async () => {
     if (valid.length === 0) {
       setError(invalid.length > 0
-        ? 'No valid filenames. Use format: "{Carrier Name} Invoice YYYY-MM-DD.pdf"'
+        ? 'No valid filenames. Date after "Invoice" must be YYYY-MM-DD, DD-MM-YYYY, or DD-MM-YY (e.g. … Invoice 2018-03-15.pdf or … Invoice 15-03-2018.pdf).'
         : 'Select PDF files first.');
       return;
     }
@@ -279,14 +320,14 @@ const UploadOldInvoicesPage = () => {
                     const loadCount = item.data ? countLoads(item.data) : 0;
                     return (
                       <tr key={i} className={item.error ? 'row-error' : ''}>
-                        <td>{item.file.name}</td>
-                        <td>{item.data?.carrierName ?? item.data?.billTo?.name ?? '—'}</td>
-                        <td>{item.data?.invoiceDate ?? item.data?.dueDate ?? '—'}</td>
-                        <td className="num">
+                        <td data-label="Filename">{item.file.name}</td>
+                        <td data-label="Carrier">{item.data?.carrierName ?? item.data?.billTo?.name ?? '—'}</td>
+                        <td data-label="Date">{item.data?.invoiceDate ?? item.data?.dueDate ?? '—'}</td>
+                        <td className="num" data-label="Total">
                           {item.error ? '—' : total != null ? `$${Number(total).toFixed(2)}` : '—'}
                         </td>
-                        <td className="num">{item.error ? '—' : loadCount}</td>
-                        <td>
+                        <td className="num" data-label="# Loads">{item.error ? '—' : loadCount}</td>
+                        <td data-label="Status">
                           {item.error ? (
                             <span className="status-bad" title={item.error}>Error</span>
                           ) : (
@@ -531,13 +572,13 @@ const UploadOldInvoicesPage = () => {
                 <tbody>
                   {(group.lines || []).map((line, li) => (
                     <tr key={li}>
-                      <td><input value={line.pickupDate || ''} onChange={(e) => updateLine(gi, li, 'pickupDate', e.target.value)} /></td>
-                      <td><input value={line.deliveryDate || ''} onChange={(e) => updateLine(gi, li, 'deliveryDate', e.target.value)} /></td>
-                      <td><input value={line.originCityState || ''} onChange={(e) => updateLine(gi, li, 'originCityState', e.target.value)} /></td>
-                      <td><input value={line.destCityState || ''} onChange={(e) => updateLine(gi, li, 'destCityState', e.target.value)} /></td>
-                      <td><input value={line.price || ''} onChange={(e) => updateLine(gi, li, 'price', e.target.value)} /></td>
-                      <td><input value={line.ratePercent || ''} onChange={(e) => updateLine(gi, li, 'ratePercent', e.target.value)} /></td>
-                      <td><input value={line.amount || ''} onChange={(e) => updateLine(gi, li, 'amount', e.target.value)} /></td>
+                      <td data-label="Pickup"><input value={line.pickupDate || ''} onChange={(e) => updateLine(gi, li, 'pickupDate', e.target.value)} /></td>
+                      <td data-label="Delivery"><input value={line.deliveryDate || ''} onChange={(e) => updateLine(gi, li, 'deliveryDate', e.target.value)} /></td>
+                      <td data-label="Origin"><input value={line.originCityState || ''} onChange={(e) => updateLine(gi, li, 'originCityState', e.target.value)} /></td>
+                      <td data-label="Destination"><input value={line.destCityState || ''} onChange={(e) => updateLine(gi, li, 'destCityState', e.target.value)} /></td>
+                      <td data-label="Price"><input value={line.price || ''} onChange={(e) => updateLine(gi, li, 'price', e.target.value)} /></td>
+                      <td data-label="Rate"><input value={line.ratePercent || ''} onChange={(e) => updateLine(gi, li, 'ratePercent', e.target.value)} /></td>
+                      <td data-label="Amount"><input value={line.amount || ''} onChange={(e) => updateLine(gi, li, 'amount', e.target.value)} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -561,8 +602,97 @@ const UploadOldInvoicesPage = () => {
     <div className="upload-old-invoices-page">
       <h2>Upload Old Invoices</h2>
       <p className="page-description">
-        Upload PDFs named <strong>{"{Carrier Name} Invoice YYYY-MM-DD.pdf"}</strong>. Use <strong>Extract all</strong> to have the AI read each invoice, then review total and load count and click Confirm to add loads and recreate invoices (carrier must exist in Settings). Or <strong>upload quickly</strong> (filename only) or <strong>extract one</strong> to edit before saving.
+        Upload PDFs named <strong>{"{Carrier Name} Invoice {date}.pdf"}</strong> — the date may be <strong>YYYY-MM-DD</strong>, <strong>DD-MM-YYYY</strong>, or <strong>DD-MM-YY</strong>. Use <strong>Extract all</strong> to have the AI read each invoice, then review total and load count and click Confirm to add loads and recreate invoices (carrier must exist in Settings). Or <strong>upload quickly</strong> (filename only) or <strong>extract one</strong> to edit before saving.
       </p>
+
+      <div className="xlsx-import-box">
+        <h3>Import old loads from XLSX</h3>
+        <p className="page-description">
+          Upload an <strong>.xlsx</strong> workbook: required column <code>source_pdf</code>; optional <code>carrier_name</code> and <code>invoice_date</code> (used in preference to parsing the PDF path/filename). Loads are grouped by <code>source_pdf</code>, load numbers use <code>invoice_number</code> when filled or else <code>OLDXLSX-…</code>, and invoices can optionally be created and marked paid in sequence.
+        </p>
+        <div className="upload-old-area">
+          <input
+            ref={workbookInputRef}
+            type="file"
+            accept=".xlsx"
+            onChange={handleWorkbookFileChange}
+            disabled={importingWorkbook}
+            className="file-input"
+          />
+          <button
+            type="button"
+            className="browse-btn"
+            onClick={() => workbookInputRef.current?.click()}
+            disabled={importingWorkbook}
+          >
+            {workbookFile ? workbookFile.name : 'Choose XLSX workbook'}
+          </button>
+        </div>
+        <div className="xlsx-options">
+          <label className="checkbox-option">
+            <input
+              type="checkbox"
+              checked={workbookOptions.markLoadsInvoiced}
+              onChange={(e) => handleWorkbookOptionChange('markLoadsInvoiced', e.target.checked)}
+              disabled={importingWorkbook}
+            />
+            Mark created loads as invoiced
+          </label>
+          <label className="checkbox-option">
+            <input
+              type="checkbox"
+              checked={workbookOptions.createInvoices}
+              onChange={(e) => handleWorkbookOptionChange('createInvoices', e.target.checked)}
+              disabled={importingWorkbook}
+            />
+            Create invoices per source PDF
+          </label>
+          <label className="checkbox-option">
+            <input
+              type="checkbox"
+              checked={workbookOptions.markInvoicesPaid}
+              onChange={(e) => handleWorkbookOptionChange('markInvoicesPaid', e.target.checked)}
+              disabled={importingWorkbook || !workbookOptions.createInvoices}
+            />
+            Mark created invoices as paid using the invoice date (<code>invoice_date</code> column if present, else PDF filename)
+          </label>
+        </div>
+        <div className="action-buttons">
+          <button
+            type="button"
+            className="extract-all-btn"
+            onClick={handleImportWorkbook}
+            disabled={importingWorkbook || !workbookFile}
+          >
+            {importingWorkbook ? 'Importing workbook...' : 'Import workbook'}
+          </button>
+        </div>
+        {workbookResults && (
+          <div className="results-box">
+            <p className="results-success">
+              Workbook <strong>{workbookResults.workbook}</strong>: {workbookResults.success_groups?.length || 0} source PDF group(s) imported.
+            </p>
+            {Array.isArray(workbookResults.success_groups) && workbookResults.success_groups.length > 0 && (
+              <ul className="results-success-list">
+                {workbookResults.success_groups.map((item, i) => (
+                  <li key={i}>
+                    {item.source_pdf}: {item.loads_created} load(s)
+                    {item.invoice_created ? `, invoice ${item.invoice_number}` : ''}
+                    {item.invoice_paid ? ' (paid)' : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {Array.isArray(workbookResults.failed_groups) && workbookResults.failed_groups.length > 0 && (
+              <ul className="results-fail">
+                {workbookResults.failed_groups.map((item, i) => (
+                  <li key={i}>{item.source_pdf}: {item.error}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="upload-old-area">
         <input
@@ -601,10 +731,10 @@ const UploadOldInvoicesPage = () => {
                 const amt = amountsByFilename[file.name];
                 return (
                   <tr key={i} className={p ? '' : 'invalid'}>
-                    <td>{file.name}</td>
-                    <td>{p ? p.carrierName : '—'}</td>
-                    <td>{p ? p.dateStr : '—'}</td>
-                    <td className="amount-col">
+                    <td data-label="Filename">{file.name}</td>
+                    <td data-label="Carrier">{p ? p.carrierName : '—'}</td>
+                    <td data-label="Date">{p ? p.dateStr : '—'}</td>
+                    <td className="amount-col" data-label="Amount">
                       {amt ? (
                         amt.error ? (
                           <span className="amount-error" title={amt.error}>Error</span>
@@ -615,7 +745,7 @@ const UploadOldInvoicesPage = () => {
                         <span className="amount-placeholder">—</span>
                       )}
                     </td>
-                    <td>{p ? <span className="status-ok">OK</span> : <span className="status-bad">Invalid format</span>}</td>
+                    <td data-label="Status">{p ? <span className="status-ok">OK</span> : <span className="status-bad">Invalid format</span>}</td>
                   </tr>
                 );
               })}

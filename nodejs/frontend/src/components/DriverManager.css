@@ -212,3 +212,135 @@
   font-size: 0.85em;
 }
 
+.form-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #ddd;
+}
+
+.driver-form .form-section:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.form-section h4 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.form-section-hint {
+  margin: -6px 0 12px 0;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.form-row-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-row-four {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  .form-row-four {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.checkbox-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.checkbox-inline input {
+  width: auto;
+}
+
+.status-inactive {
+  margin-top: 4px;
+}
+
+.driver-inactive-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #e9ecef;
+  color: #495057;
+  border-radius: 4px;
+}
+
+.driver-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1rem;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.45);
+  box-sizing: border-box;
+}
+
+.driver-modal {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  margin-bottom: 2rem;
+}
+
+.driver-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.driver-modal-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.driver-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  color: #666;
+}
+
+.driver-modal-close:hover {
+  color: #000;
+}
+
+.driver-modal-body {
+  padding: 16px 20px 20px;
+  max-height: min(80vh, 900px);
+  overflow-y: auto;
+}
+
+.driver-modal-body .driver-form {
+  margin-bottom: 0;
+}
+

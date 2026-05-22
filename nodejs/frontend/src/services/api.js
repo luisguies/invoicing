@@ -123,8 +123,12 @@ export const deleteLoad = async (id) => {
   return response.data;
 };
 
-export const cancelLoad = async (id, cancelled) => {
-  const response = await api.patch(`/loads/${id}/cancel`, { cancelled });
+export const cancelLoad = async (id, cancelled, options = {}) => {
+  const response = await api.patch(`/loads/${id}/cancel`, {
+    cancelled,
+    tonu_received: options.tonuReceived === true,
+    tonu_amount: options.tonuAmount
+  });
   return response.data;
 };
 
@@ -187,6 +191,11 @@ export const deleteCarrier = async (id) => {
 // Drivers API
 export const getDrivers = async () => {
   const response = await api.get('/drivers');
+  return response.data;
+};
+
+export const getDriversBoard = async () => {
+  const response = await api.get('/drivers/board');
   return response.data;
 };
 
@@ -272,6 +281,19 @@ export const saveExtractedInvoice = async (file, data) => {
   const response = await api.post('/invoices/save-extracted', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 60000
+  });
+  return response.data;
+};
+
+export const importOldLoadsWorkbook = async (file, options = {}) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('mark_loads_invoiced', options.markLoadsInvoiced ? 'true' : 'false');
+  formData.append('create_invoices', options.createInvoices ? 'true' : 'false');
+  formData.append('mark_invoices_paid', options.markInvoicesPaid ? 'true' : 'false');
+  const response = await api.post('/invoices/import-old-loads-xlsx', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
   });
   return response.data;
 };

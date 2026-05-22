@@ -25,6 +25,8 @@ const CreateLoadPage = () => {
     driver_id: '',
     load_number: '',
     carrier_pay: '',
+    tonu: false,
+    detention_rate: '',
     pickup_date: '',
     delivery_date: '',
     pickup_city: '',
@@ -85,14 +87,16 @@ const CreateLoadPage = () => {
     if (!toTrim(form.load_number)) errors.push('Load # is required');
     if (!toTrim(form.pickup_date)) errors.push('Pickup date is required');
     if (!toTrim(form.delivery_date)) errors.push('Delivery date is required');
-    if (!toTrim(form.pickup_city)) errors.push('Pickup city is required');
-    if (!toTrim(form.pickup_state)) errors.push('Pickup state is required');
-    if (!toTrim(form.delivery_city)) errors.push('Delivery city is required');
-    if (!toTrim(form.delivery_state)) errors.push('Delivery state is required');
+    if (!form.tonu && !toTrim(form.pickup_city)) errors.push('Pickup city is required');
+    if (!form.tonu && !toTrim(form.pickup_state)) errors.push('Pickup state is required');
+    if (!form.tonu && !toTrim(form.delivery_city)) errors.push('Delivery city is required');
+    if (!form.tonu && !toTrim(form.delivery_state)) errors.push('Delivery state is required');
     if (!toTrim(form.pdf_filename)) errors.push('PDF filename is required (use something like "manual-entry.pdf")');
 
     const pay = Number(form.carrier_pay);
     if (!Number.isFinite(pay)) errors.push('Carrier pay must be a number');
+    const detentionRate = form.detention_rate === '' ? 0 : Number(form.detention_rate);
+    if (!Number.isFinite(detentionRate) || detentionRate < 0) errors.push('Detention rate must be 0 or a positive number');
 
     const pickupUtc = parseDateInputToUtcDate(form.pickup_date);
     const deliveryUtc = parseDateInputToUtcDate(form.delivery_date);
@@ -102,7 +106,7 @@ const CreateLoadPage = () => {
       errors.push('Pickup date must be on or before delivery date');
     }
 
-    return { errors, pickupUtc, deliveryUtc, pay };
+    return { errors, pickupUtc, deliveryUtc, pay, detentionRate };
   };
 
   const handleSubmit = async (e) => {
@@ -110,7 +114,7 @@ const CreateLoadPage = () => {
     setError(null);
     setMessage(null);
 
-    const { errors, pickupUtc, deliveryUtc, pay } = validate();
+    const { errors, pickupUtc, deliveryUtc, pay, detentionRate } = validate();
     if (errors.length > 0) {
       setError(errors.join('. '));
       return;
@@ -126,6 +130,8 @@ const CreateLoadPage = () => {
         review_reason: null,
         load_number: toTrim(form.load_number),
         carrier_pay: pay,
+        tonu: !!form.tonu,
+        detention_rate: detentionRate,
         pickup_date: pickupUtc,
         delivery_date: deliveryUtc,
         pickup_city: toTrim(form.pickup_city),
@@ -209,6 +215,27 @@ const CreateLoadPage = () => {
               onChange={onChange('carrier_pay')}
               disabled={saving}
             />
+          </div>
+
+          <div className="form-group checkbox">
+            <label>
+              <input type="checkbox" checked={form.tonu} onChange={onChange('tonu')} disabled={saving} />
+              TONU
+            </label>
+            <small>If checked, blank locations will use TONU / XX. Existing cities will get a TONU suffix.</small>
+          </div>
+
+          <div className="form-group">
+            <label>Detention Rate</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.detention_rate}
+              onChange={onChange('detention_rate')}
+              disabled={saving}
+            />
+            <small>Added on top of the carrier pay.</small>
           </div>
 
           <div className="form-group">

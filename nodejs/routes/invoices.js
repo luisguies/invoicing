@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { Invoice, Load, InvoiceRule } = require('../db/database');
-const { generateInvoicePDF } = require('../services/pdfService');
+const { generateInvoicePDF, formatDate } = require('../services/pdfService');
 const { computeInvoiceWeekFields } = require('../services/invoiceWeekService');
 const { resolveCarrier } = require('../services/carrierResolutionService');
 const { findOrCreateDriver } = require('../services/carrierDriverService');
 const { extractOldInvoice: extractOldInvoiceFromPython } = require('../services/ocrService');
+const { parseOldLoadsWorkbook } = require('../services/xlsxImportService');
+const { applyTonuLocationRules } = require('../services/loadPayService');
 const fs = require('fs');
 const path = require('path');
 
@@ -17,18 +19,20 @@ function toCurrency(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
-// Filename format: "{Carrier Name} Invoice YYYY-MM-DD.pdf" or "... YYYY-MM-DD (PERSON NAME).pdf"
-const OLD_INVOICE_FILENAME_REGEX = /^(.+)\s+Invoice\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\.pdf$/i;
-
 function parseOldInvoiceFilename(filename) {
-  const base = path.basename(filename, path.extname(filename)) + '.pdf';
-  const match = base.match(OLD_INVOICE_FILENAME_REGEX);
-  if (!match) return null;
-  const carrierName = match[1].trim();
+  const baseName = basenameFromAnyOs(filename) || path.basename(filename);
+  const withoutExt = baseName.replace(/\.[^.]+$/i, '');
+  const idx = withoutExt.toLowerCase().lastIndexOf(' invoice ');
+  if (idx === -1) return null;
+  const carrierName = withoutExt.slice(0, idx).trim();
+  if (!carrierName) return null;
+  const suffix = withoutExt.slice(idx + ' invoice '.length).trim();
+  const date = parseFlexibleInvoiceSuffixDate(suffix);
+  if (!date) return null;
   return {
     carrierName,
-    dateStr: match[2],
-    date: new Date(match[2] + 'T00:00:00.000Z')
+    dateStr: date.toISOString().slice(0, 10),
+    date
   };
 }
 
@@ -55,6 +59,22 @@ const uploadOldInvoice = multer({
     }
   },
   limits: { fileSize: 15 * 1024 * 1024 }
+});
+
+const uploadOldLoadsWorkbook = multer({
+  storage: oldInvoiceStorage,
+  fileFilter: (req, file, cb) => {
+    const name = (file.originalname || '').toLowerCase();
+    if (
+      file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      name.endsWith('.xlsx')
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .xlsx files are allowed'), false);
+    }
+  },
+  limits: { fileSize: 20 * 1024 * 1024 }
 });
 
 /**
@@ -94,6 +114,191 @@ function parseInvoiceWeekIdToUtcMonday(invoiceWeekId) {
   const d = new Date(`${invoiceWeekId}T00:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return null;
   return d;
+}
+
+/**
+ * Pickup/delivery/invoice dates from XLSX: YYYY-MM-DD (optional time from Excel),
+ * DD-MM-YYYY / DD-MM-YY, or M/D/YYYY (US-style slash).
+ */
+function parseWorkbookDate(value) {
+  const raw = (value || '').toString().trim();
+  if (!raw) return null;
+
+  const isoHead = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:\s|T|$)/);
+  if (isoHead) {
+    const d = parseInvoiceDateYmdParts(Number(isoHead[1]), Number(isoHead[2]), Number(isoHead[3]));
+    if (d) return d;
+  }
+
+  const dmy = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (dmy) {
+    return parseInvoiceDateDmyParts(Number(dmy[1]), Number(dmy[2]), Number(dmy[3]));
+  }
+
+  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slash) {
+    const month = Number(slash[1]);
+    const day = Number(slash[2]);
+    let year = Number(slash[3]);
+    if (year < 100) year += 2000;
+    const d = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function firstTrimmedFieldInRows(rows, keys) {
+  for (const row of rows) {
+    for (const key of keys) {
+      if (!key || !(key in row)) continue;
+      const s = (row[key] != null ? String(row[key]) : '').trim();
+      if (s) return s;
+    }
+  }
+  return '';
+}
+
+/** Normalize Windows paths so path parsing works on Linux (Node 'path' only treats / as separator on POSIX). */
+function pathSegmentsFromSourcePdf(sourcePdf) {
+  const normalized = (sourcePdf || '').toString().trim().replace(/\\/g, '/');
+  return normalized.split('/').filter(Boolean);
+}
+
+function basenameFromAnyOs(sourcePdf) {
+  const segs = pathSegmentsFromSourcePdf(sourcePdf);
+  return segs.length ? segs[segs.length - 1] : '';
+}
+
+function parentDirFromAnyOs(sourcePdf) {
+  const segs = pathSegmentsFromSourcePdf(sourcePdf);
+  return segs.length >= 2 ? segs[segs.length - 2] : '';
+}
+
+function parseInvoiceDateDmyParts(day, month, year) {
+  if (year < 100) year += 2000;
+  if (day <= 12 && month > 12) {
+    const tmp = day;
+    day = month;
+    month = tmp;
+  }
+  const invoiceDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  return Number.isNaN(invoiceDate.getTime()) ? null : invoiceDate;
+}
+
+/** YYYY-MM-DD */
+function parseInvoiceDateYmdParts(year, month, day) {
+  const invoiceDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  return Number.isNaN(invoiceDate.getTime()) ? null : invoiceDate;
+}
+
+/**
+ * A single dashed date segment: YYYY-MM-DD, DD-MM-YYYY, or DD-MM-YY (latter uses day/month swap when ambiguous).
+ */
+function parseFlexibleDashDateSegment(trimmed) {
+  if (!trimmed) return null;
+  const t = trimmed.trim();
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    return parseInvoiceDateYmdParts(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  }
+  const dmy = t.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (dmy) {
+    return parseInvoiceDateDmyParts(Number(dmy[1]), Number(dmy[2]), Number(dmy[3]));
+  }
+  return null;
+}
+
+/** Suffix after " Invoice " may be "YYYY-MM-DD", "DD-MM-YYYY", "DD-MM-YY", optional extra text after space. */
+function parseFlexibleInvoiceSuffixDate(suffix) {
+  if (!suffix) return null;
+  const t = suffix.trim();
+  let d = parseFlexibleDashDateSegment(t);
+  if (d) return d;
+  const first = t.split(/\s+/)[0];
+  return parseFlexibleDashDateSegment(first);
+}
+
+function parseSourcePdfInfo(sourcePdf) {
+  const basename = basenameFromAnyOs(sourcePdf);
+  if (!basename) return null;
+  const parentFolder = parentDirFromAnyOs(sourcePdf);
+  const withoutExt = basename.replace(/\.[^.]+$/, '');
+
+  const invoiceWordIndex = withoutExt.toLowerCase().lastIndexOf(' invoice ');
+  if (invoiceWordIndex !== -1) {
+    const carrierName = withoutExt.slice(0, invoiceWordIndex).trim();
+    const suffix = withoutExt.slice(invoiceWordIndex + ' invoice '.length).trim();
+    const invoiceDate = parseFlexibleInvoiceSuffixDate(suffix);
+    return {
+      basename,
+      carrierName,
+      invoiceDate
+    };
+  }
+
+  const ymdEnd = withoutExt.match(/^(.+?)\s+(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (ymdEnd) {
+    const carrierName = ymdEnd[1].trim();
+    const invoiceDate = parseInvoiceDateYmdParts(Number(ymdEnd[2]), Number(ymdEnd[3]), Number(ymdEnd[4]));
+    return {
+      basename,
+      carrierName,
+      invoiceDate
+    };
+  }
+
+  const dashEnd = withoutExt.match(/^(.+?)\s+(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (dashEnd) {
+    const carrierName = dashEnd[1].trim();
+    const invoiceDate = parseInvoiceDateDmyParts(
+      Number(dashEnd[2]),
+      Number(dashEnd[3]),
+      Number(dashEnd[4])
+    );
+    return {
+      basename,
+      carrierName,
+      invoiceDate
+    };
+  }
+
+  if (parentFolder && !/^\d{4}$/.test(parentFolder)) {
+    return {
+      basename,
+      carrierName: parentFolder.trim(),
+      invoiceDate: null
+    };
+  }
+
+  return null;
+}
+
+function splitCityState(value, fallbackCity = '', fallbackState = '') {
+  const raw = (value || '').toString().trim();
+  if (!raw) {
+    return { city: fallbackCity, state: fallbackState };
+  }
+  const idx = raw.lastIndexOf(',');
+  if (idx === -1) {
+    return { city: raw, state: fallbackState };
+  }
+  return {
+    city: raw.slice(0, idx).trim(),
+    state: raw.slice(idx + 1).trim().toUpperCase() || fallbackState
+  };
+}
+
+function randomSixDigits() {
+  return String(Math.floor(Math.random() * 900000) + 100000);
+}
+
+function parseCurrencyInput(value) {
+  const raw = (value || '').toString().replace(/[$,]/g, '').trim();
+  if (!raw) return 0;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 // Get all invoices (optional query: carrier, dateFrom, dateTo)
@@ -337,6 +542,237 @@ router.post('/save-extracted', uploadOldInvoice.single('file'), async (req, res)
       try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
     }
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Import old loads from XLSX and optionally create/pay invoices grouped by source_pdf
+router.post('/import-old-loads-xlsx', uploadOldLoadsWorkbook.single('file'), async (req, res) => {
+  let createdLoadIdsForCleanup = [];
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No workbook uploaded' });
+    }
+
+    const markLoadsInvoiced = req.body.mark_loads_invoiced === true || req.body.mark_loads_invoiced === 'true';
+    const createInvoices = req.body.create_invoices === true || req.body.create_invoices === 'true';
+    const markInvoicesPaid = req.body.mark_invoices_paid === true || req.body.mark_invoices_paid === 'true';
+
+    if (markInvoicesPaid && !createInvoices) {
+      return res.status(400).json({ error: 'mark_invoices_paid requires create_invoices' });
+    }
+
+    const parsedWorkbook = await parseOldLoadsWorkbook(req.file.path);
+    const rows = Array.isArray(parsedWorkbook.rows) ? parsedWorkbook.rows : [];
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'Workbook has no data rows' });
+    }
+
+    const groups = new Map();
+    for (const row of rows) {
+      const sourcePdf = (row.source_pdf || '').toString().trim();
+      if (!sourcePdf) continue;
+      if (!groups.has(sourcePdf)) groups.set(sourcePdf, []);
+      groups.get(sourcePdf).push(row);
+    }
+
+    if (groups.size === 0) {
+      return res.status(400).json({ error: 'Workbook rows must include source_pdf values' });
+    }
+
+    const success = [];
+    const fail = [];
+
+    for (const [sourcePdf, groupRows] of groups.entries()) {
+      const localCreatedLoadIds = [];
+      const invoiceLines = [];
+      try {
+        const sourceInfo = parseSourcePdfInfo(sourcePdf);
+        const carrierFromColumn = firstTrimmedFieldInRows(groupRows, [
+          'carrier_name',
+          'carrier',
+          'Carrier',
+          'Carrier name',
+          'carrier name'
+        ]);
+        const carrierName = (carrierFromColumn || sourceInfo?.carrierName || '').trim();
+        if (!carrierName) {
+          throw new Error(
+            `Could not determine carrier (set carrier_name on rows or use a recognizable source_pdf path/name): ${sourcePdf}`
+          );
+        }
+
+        const resolution = await resolveCarrier(carrierName);
+        const carrier_id = resolution ? resolution.carrier_id : null;
+        if (!carrier_id) {
+          throw new Error(`Carrier "${carrierName}" not found. Add it in Settings first or create an alias.`);
+        }
+
+        const invoiceNumberBase =
+          (groupRows.find((r) => (r.invoice_number || '').toString().trim())?.invoice_number || '').toString().trim() ||
+          `OLDXLSX-${Date.now()}`;
+
+        const invoiceDateRaw = firstTrimmedFieldInRows(groupRows, [
+          'invoice_date',
+          'Invoice date',
+          'invoice date'
+        ]);
+        let invoiceDate = invoiceDateRaw ? parseWorkbookDate(invoiceDateRaw) : null;
+        if (!invoiceDate && sourceInfo?.invoiceDate) {
+          invoiceDate = sourceInfo.invoiceDate;
+        }
+        if (!invoiceDate) {
+          invoiceDate = new Date();
+        }
+        const dueDate = new Date(invoiceDate.getTime() + 30 * MS_PER_DAY);
+
+        for (const row of groupRows) {
+          const pickupDate = parseWorkbookDate(row.pickup_date);
+          const deliveryDate = parseWorkbookDate(row.delivery_date);
+          if (!pickupDate || !deliveryDate) {
+            throw new Error(`Invalid pickup/delivery date in source_pdf group ${path.basename(sourcePdf)}`);
+          }
+          const invoiceWeek = computeInvoiceWeekFields(pickupDate, deliveryDate);
+          if (!invoiceWeek) {
+            throw new Error(`Unable to compute invoice week for ${path.basename(sourcePdf)}`);
+          }
+
+          const origin = splitCityState(row.origin, '', '');
+          const destination = splitCityState(row.destination, '', '');
+          const generatedLoadNumber = `${invoiceNumberBase}-sample-${randomSixDigits()}`;
+          const price = parseCurrencyInput(row.price);
+          const amount = parseCurrencyInput(row.amount);
+          const ratePercent = price > 0 ? `${((amount / price) * 100).toFixed(2)}%` : '';
+          const load = new Load(applyTonuLocationRules({
+            carrier_id,
+            carrier_raw_extracted: carrierName,
+            carrier_source: 'manual',
+            driver_id: null,
+            load_number: generatedLoadNumber,
+            carrier_pay: price,
+            detention_rate: 0,
+            tonu: false,
+            tonu_received: false,
+            pickup_date: pickupDate,
+            delivery_date: deliveryDate,
+            invoice_monday: invoiceWeek.invoiceMonday,
+            invoice_week_id: invoiceWeek.invoiceWeekId,
+            pickup_city: origin.city,
+            pickup_state: origin.state,
+            delivery_city: destination.city,
+            delivery_state: destination.state,
+            pdf_filename: req.file.originalname || path.basename(req.file.path),
+            rate_confirmation_path: null,
+            cancelled: false,
+            confirmed: true,
+            invoiced: !createInvoices && markLoadsInvoiced
+          }));
+          await load.save();
+          localCreatedLoadIds.push(load._id);
+          createdLoadIdsForCleanup.push(load._id);
+          invoiceLines.push({
+            loadNumber: generatedLoadNumber,
+            pickupDate: formatDate(pickupDate),
+            deliveryDate: formatDate(deliveryDate),
+            originCityState: [origin.city, origin.state].filter(Boolean).join(', '),
+            destCityState: [destination.city, destination.state].filter(Boolean).join(', '),
+            price,
+            ratePercent,
+            amount
+          });
+        }
+
+        let invoice = null;
+        if (createInvoices && localCreatedLoadIds.length > 0) {
+          const subtotal = invoiceLines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
+          const result = await generateInvoicePDF(localCreatedLoadIds, {
+            invoiceNumber: invoiceNumberBase,
+            invoiceDate,
+            dueDate,
+            billTo: { name: carrierName },
+            subtotal,
+            postage: 0,
+            total: subtotal,
+            balanceDue: subtotal,
+            groups: [{
+              groupLabel: invoiceNumberBase,
+              groupRate: '',
+              lines: invoiceLines
+            }]
+          });
+          invoice = new Invoice({
+            invoice_number: invoiceNumberBase,
+            load_ids: localCreatedLoadIds,
+            pdf_path: result.pdfPath,
+            invoiceDate: result.invoiceData.invoiceDate,
+            dueDate: result.invoiceData.dueDate,
+            billTo: result.invoiceData.billTo,
+            payableTo: result.invoiceData.payableTo,
+            subtotal: result.invoiceData.subtotal,
+            postage: result.invoiceData.postage,
+            total: result.invoiceData.total,
+            balanceDue: result.invoiceData.balanceDue,
+            cta: result.invoiceData.cta,
+            paymentLine: result.invoiceData.paymentLine,
+            groups: result.invoiceData.groups,
+            carrier_name: carrierName
+          });
+
+          if (markInvoicesPaid) {
+            invoice.paid = true;
+            invoice.paid_date = invoiceDate;
+            invoice.is_partial_payment = false;
+            invoice.paid_amount = toCurrency(invoice.total || invoice.balanceDue || 0);
+          }
+
+          await invoice.save();
+          await Load.updateMany(
+            { _id: { $in: localCreatedLoadIds } },
+            { $set: { invoiced: true } }
+          );
+        }
+
+        success.push({
+          source_pdf: sourcePdf,
+          carrier: carrierName,
+          invoice_number: invoiceNumberBase,
+          loads_created: localCreatedLoadIds.length,
+          invoice_created: Boolean(invoice),
+          invoice_paid: Boolean(invoice && markInvoicesPaid)
+        });
+      } catch (groupError) {
+        if (localCreatedLoadIds.length > 0) {
+          await Load.deleteMany({ _id: { $in: localCreatedLoadIds } });
+          createdLoadIdsForCleanup = createdLoadIdsForCleanup.filter(
+            (id) => !localCreatedLoadIds.some((mine) => mine.toString() === id.toString())
+          );
+        }
+        fail.push({
+          source_pdf: sourcePdf,
+          error: groupError.message
+        });
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      workbook: req.file.originalname || path.basename(req.file.path),
+      groups_processed: groups.size,
+      success_groups: success,
+      failed_groups: fail
+    });
+  } catch (error) {
+    if (createdLoadIdsForCleanup.length > 0) {
+      try {
+        await Load.deleteMany({ _id: { $in: createdLoadIdsForCleanup } });
+      } catch (cleanupError) {
+        console.error('Failed cleanup after XLSX import error:', cleanupError);
+      }
+    }
+    return res.status(500).json({ error: error.message });
+  } finally {
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+    }
   }
 });
 

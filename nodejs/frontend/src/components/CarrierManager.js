@@ -13,7 +13,13 @@ const CarrierManager = () => {
       name: '',
       cityStateZip: '',
       phone: ''
-    }
+    },
+    usdot: '',
+    mcNumber: '',
+    myCarrierPacketPassword: '',
+    rmisId: '',
+    rmisZip: '',
+    highwayPhone: ''
   });
 
   useEffect(() => {
@@ -52,7 +58,13 @@ const CarrierManager = () => {
           name: '',
           cityStateZip: '',
           phone: ''
-        }
+        },
+        usdot: '',
+        mcNumber: '',
+        myCarrierPacketPassword: '',
+        rmisId: '',
+        rmisZip: '',
+        highwayPhone: ''
       });
       loadCarriers();
     } catch (error) {
@@ -69,7 +81,13 @@ const CarrierManager = () => {
         name: '',
         cityStateZip: '',
         phone: ''
-      }
+      },
+      usdot: carrier.usdot || '',
+      mcNumber: carrier.mcNumber || '',
+      myCarrierPacketPassword: carrier.myCarrierPacketPassword || '',
+      rmisId: carrier.rmisId || '',
+      rmisZip: carrier.rmisZip || '',
+      highwayPhone: carrier.highwayPhone || ''
     });
     setShowForm(true);
   };
@@ -101,7 +119,13 @@ const CarrierManager = () => {
                 name: '',
                 cityStateZip: '',
                 phone: ''
-              }
+              },
+              usdot: '',
+              mcNumber: '',
+              myCarrierPacketPassword: '',
+              rmisId: '',
+              rmisZip: '',
+              highwayPhone: ''
             });
           }
         }} className="add-btn">
@@ -164,6 +188,66 @@ const CarrierManager = () => {
                   ...formData,
                   billTo: { ...formData.billTo, phone: e.target.value }
                 })}
+              />
+            </div>
+          </div>
+
+          <div className="form-section">
+            <h4>Driver board — carrier credentials</h4>
+            <p className="form-section-hint">Shown on the driver board for this carrier.</p>
+            <div className="form-group">
+              <label>USDOT #</label>
+              <input
+                type="text"
+                value={formData.usdot}
+                onChange={(e) => setFormData({ ...formData, usdot: e.target.value })}
+                autoComplete="off"
+              />
+            </div>
+            <div className="form-group">
+              <label>MC #</label>
+              <input
+                type="text"
+                value={formData.mcNumber}
+                onChange={(e) => setFormData({ ...formData, mcNumber: e.target.value })}
+                autoComplete="off"
+              />
+            </div>
+            <div className="form-group">
+              <label>MyCarrierPacket password</label>
+              <input
+                type="text"
+                value={formData.myCarrierPacketPassword}
+                onChange={(e) => setFormData({ ...formData, myCarrierPacketPassword: e.target.value })}
+                autoComplete="off"
+              />
+            </div>
+            <div className="form-group">
+              <label>RMIS ID</label>
+              <input
+                type="text"
+                value={formData.rmisId}
+                onChange={(e) => setFormData({ ...formData, rmisId: e.target.value })}
+                autoComplete="off"
+              />
+            </div>
+            <div className="form-group">
+              <label>RMIS ZIP</label>
+              <input
+                type="text"
+                value={formData.rmisZip}
+                onChange={(e) => setFormData({ ...formData, rmisZip: e.target.value })}
+                autoComplete="off"
+              />
+            </div>
+            <div className="form-group">
+              <label>Highway phone #</label>
+              <input
+                type="text"
+                value={formData.highwayPhone}
+                onChange={(e) => setFormData({ ...formData, highwayPhone: e.target.value })}
+                placeholder="XXX-XXX-XXXX"
+                autoComplete="off"
               />
             </div>
           </div>

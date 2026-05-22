@@ -3,6 +3,7 @@ const handlebars = require('handlebars');
 const fs = require('fs');
 const path = require('path');
 const { Load, Dispatcher, Settings } = require('../db/database');
+const { getLoadTotalCarrierPay } = require('./loadPayService');
 
 function sanitizeFilenameComponent(value) {
   // Make a filesystem-safe filename component (works well for Windows + Linux).
@@ -65,73 +66,87 @@ async function generateInvoicePDF(loadIds, invoiceData) {
   const defaultRate = settings.defaultRate || 5.0;
 
   // Get billTo from first load's carrier (assuming all loads have same carrier for billTo)
-  // In practice, you might want to handle multiple carriers differently
   const firstLoad = loads[0];
   const carrier = firstLoad.carrier_id;
-  const billTo = carrier.billTo || {};
+  const billTo = invoiceData.billTo || carrier.billTo || {};
 
-  // Group loads by driver (driver is the groupLabel in tables)
-  const grouped = {};
+  let grouped = [];
   let subtotal = 0;
 
-  for (const load of loads) {
-    // Use driver_id for grouping, handle loads without driver
-    const driverId = load.driver_id 
-      ? load.driver_id._id.toString() 
-      : 'no-driver';
-    
-    if (!grouped[driverId]) {
-      // Use driver.groupLabel if set, otherwise default to driver.name
-      let groupLabel = 'No Driver';
-      if (load.driver_id) {
-        groupLabel = load.driver_id.groupLabel || load.driver_id.name;
+  if (Array.isArray(invoiceData.groups) && invoiceData.groups.length > 0) {
+    grouped = invoiceData.groups.map((group) => ({
+      groupLabel: group.groupLabel || 'Loads',
+      groupRate: group.groupRate || '',
+      lines: Array.isArray(group.lines) ? group.lines.map((line) => ({
+        loadNumber: (line.loadNumber || '').toString(),
+        pickupDate: line.pickupDate || '',
+        deliveryDate: line.deliveryDate || '',
+        originCityState: line.originCityState || '',
+        destCityState: line.destCityState || '',
+        price: Number(line.price || 0).toFixed(2),
+        ratePercent: line.ratePercent || '',
+        amount: Number(line.amount || 0).toFixed(2)
+      })) : []
+    }));
+    subtotal = Number(invoiceData.subtotal || 0);
+  } else {
+    const groupedMap = {};
+    for (const load of loads) {
+      const driverId = load.driver_id
+        ? load.driver_id._id.toString()
+        : 'no-driver';
+
+      if (!groupedMap[driverId]) {
+        let groupLabel = 'No Driver';
+        if (load.driver_id) {
+          groupLabel = load.driver_id.groupLabel || load.driver_id.name;
+        }
+
+        groupedMap[driverId] = {
+          groupLabel,
+          groupRate: `${defaultRate}%`,
+          lines: []
+        };
       }
-      
-      grouped[driverId] = {
-        groupLabel: groupLabel,
-        groupRate: `${defaultRate}%`,
-        lines: []
-      };
+
+      const price = getLoadTotalCarrierPay(load);
+      const ratePercent = `${defaultRate}%`;
+      const rateDecimal = Number(defaultRate || 0) / 100;
+      const amount = price * rateDecimal;
+
+      subtotal += amount;
+
+      groupedMap[driverId].lines.push({
+        loadNumber: (load.load_number || '').toString(),
+        pickupDate: formatDate(load.pickup_date),
+        deliveryDate: formatDate(load.delivery_date),
+        originCityState: `${load.pickup_city || ''}, ${load.pickup_state || ''}`,
+        destCityState: `${load.delivery_city || ''}, ${load.delivery_state || ''}`,
+        price: price.toFixed(2),
+        ratePercent,
+        amount: amount.toFixed(2)
+      });
     }
-
-    const price = Number(load.carrier_pay || 0);
-    const ratePercent = `${defaultRate}%`;
-
-    // Dispatcher fee (commission) is price * (rate/100).
-    // Example: $2000 @ 5% => $100
-    const rateDecimal = Number(defaultRate || 0) / 100;
-    const amount = price * rateDecimal;
-
-    subtotal += amount;
-
-    grouped[driverId].lines.push({
-      loadNumber: (load.load_number || '').toString(),
-      pickupDate: formatDate(load.pickup_date),
-      deliveryDate: formatDate(load.delivery_date),
-      originCityState: `${load.pickup_city || ''}, ${load.pickup_state || ''}`,
-      destCityState: `${load.delivery_city || ''}, ${load.delivery_state || ''}`,
-      price: price.toFixed(2),
-      ratePercent: ratePercent,
-      amount: amount.toFixed(2)
-    });
+    grouped = Object.values(groupedMap);
   }
 
   // Prepare template data
-  const postage = invoiceData.postage || 0;
-  const total = subtotal + postage;
+  const postage = Number(invoiceData.postage || 0);
+  const total = invoiceData.total != null ? Number(invoiceData.total) : subtotal + postage;
+  const balanceDue = invoiceData.balanceDue != null ? Number(invoiceData.balanceDue) : total;
   
   const templateData = {
     invoiceNumber: invoiceData.invoiceNumber || `INV-${Date.now()}`,
     invoiceDate: formatDate(invoiceData.invoiceDate || new Date()),
     dueDate: formatDate(invoiceData.dueDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
-    balanceDue: total.toFixed(2),
+    balanceDue: balanceDue.toFixed(2),
     billToName: billTo.name || invoiceData.billToName || 'Customer Name',
     billToCityStateZip: billTo.cityStateZip || invoiceData.billToCityStateZip || 'City, State ZIP',
     billToPhone: billTo.phone || invoiceData.billToPhone || 'Phone',
     payableToName: activeDispatcher.payableTo?.name || invoiceData.payableToName || 'Your Company Name',
     payableToCityStateZip: activeDispatcher.payableTo?.cityStateZip || invoiceData.payableToCityStateZip || 'City, State ZIP',
     payableToPhone: activeDispatcher.payableTo?.phone || invoiceData.payableToPhone || 'Phone',
-    groups: Object.values(grouped),
+    groups: grouped,
     subtotal: subtotal.toFixed(2),
     postage: postage.toFixed(2),
     total: total.toFixed(2),
@@ -159,7 +174,7 @@ async function generateInvoicePDF(loadIds, invoiceData) {
     balanceDue: total,
     cta: templateData.cta,
     paymentLine: templateData.paymentLine,
-    groups: Object.values(grouped)
+    groups: grouped
   };
 
   // Read and compile template

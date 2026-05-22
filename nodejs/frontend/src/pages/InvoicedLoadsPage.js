@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { searchInvoicedLoads, getCarriers, getDrivers, getDispatchers, markLoadAsInvoiced, patchLoadSubDispatcher, getLoadRateConfirmationUrl } from '../services/api';
+import { searchInvoicedLoads, getCarriers, getDrivers, getDispatchers, markLoadAsInvoiced, patchLoadSubDispatcher } from '../services/api';
+import RateConfirmationModal from '../components/RateConfirmationModal';
 import { formatDate, formatDateInput } from '../utils/dateUtils';
+import { getLoadTotalCarrierPay } from '../utils/loadPayUtils';
 import './InvoicedLoadsPage.css';
 
 const InvoicedLoadsPage = () => {
@@ -9,6 +11,7 @@ const InvoicedLoadsPage = () => {
   const [carriers, setCarriers] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [dispatchers, setDispatchers] = useState([]);
+  const [rateConfirmationLoad, setRateConfirmationLoad] = useState(null);
   const [filters, setFilters] = useState({
     carrier_id: '',
     load_number: '',
@@ -128,7 +131,7 @@ const InvoicedLoadsPage = () => {
   const handleViewRateConfirmation = (load) => {
     const hasRateConfirmationPath = Boolean((load?.rate_confirmation_path || '').toString().trim());
     if (!hasRateConfirmationPath) return;
-    window.open(getLoadRateConfirmationUrl(load._id), '_blank', 'noopener,noreferrer');
+    setRateConfirmationLoad({ _id: load._id, load_number: load.load_number });
   };
 
   return (
@@ -256,10 +259,10 @@ const InvoicedLoadsPage = () => {
                 const hasRateConfirmationPath = Boolean((load?.rate_confirmation_path || '').toString().trim());
                 return (
                   <tr key={load._id}>
-                    <td>{load.load_number}</td>
-                    <td>{load.carrier_id?.name || 'N/A'}</td>
-                    <td>{load.driver_id?.name || 'N/A'}</td>
-                    <td>
+                    <td data-label="Load #">{load.load_number}</td>
+                    <td data-label="Carrier">{load.carrier_id?.name || 'N/A'}</td>
+                    <td data-label="Driver">{load.driver_id?.name || 'N/A'}</td>
+                    <td data-label="Sub-dispatcher">
                       <select
                         className="sub-dispatcher-select"
                         value={currentSubId}
@@ -274,12 +277,12 @@ const InvoicedLoadsPage = () => {
                         ))}
                       </select>
                     </td>
-                    <td>{formatDate(load.pickup_date)}</td>
-                    <td>{formatDate(load.delivery_date)}</td>
-                    <td>{load.pickup_city}, {load.pickup_state}</td>
-                    <td>{load.delivery_city}, {load.delivery_state}</td>
-                    <td>${Number(load.carrier_pay || 0).toFixed(2)}</td>
-                    <td>
+                    <td data-label="Pickup Date">{formatDate(load.pickup_date)}</td>
+                    <td data-label="Delivery Date">{formatDate(load.delivery_date)}</td>
+                    <td data-label="Origin">{load.pickup_city}, {load.pickup_state}</td>
+                    <td data-label="Destination">{load.delivery_city}, {load.delivery_state}</td>
+                    <td data-label="Amount">${getLoadTotalCarrierPay(load).toFixed(2)}</td>
+                    <td data-label="Actions">
                       <button
                         onClick={() => handleViewRateConfirmation(load)}
                         className="view-rate-confirmation-btn"
@@ -305,6 +308,14 @@ const InvoicedLoadsPage = () => {
             Found {loads.length} invoiced load{loads.length !== 1 ? 's' : ''}
           </div>
         </div>
+      )}
+
+      {rateConfirmationLoad && (
+        <RateConfirmationModal
+          loadId={rateConfirmationLoad._id}
+          loadNumber={rateConfirmationLoad.load_number}
+          onClose={() => setRateConfirmationLoad(null)}
+        />
       )}
     </div>
   );

@@ -142,13 +142,30 @@
   gap: 1rem;
 }
 
+.company-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #007bff;
+}
+
 .company-header {
   margin: 0;
   color: #2c3e50;
   font-size: 1.5rem;
   font-weight: 600;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #007bff;
+  flex: 1;
+  min-width: 0;
+}
+
+.company-current-owed {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #495057;
+  white-space: nowrap;
 }
 
 .company-invoices {
@@ -469,5 +486,58 @@
   padding: 3rem;
   font-size: 1.2rem;
   color: #666;
+}
+
+@media (max-width: 768px) {
+  .invoice-table thead {
+    display: none;
+  }
+
+  .invoice-table,
+  .invoice-table tbody,
+  .invoice-table tr,
+  .invoice-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .invoice-table tr {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    background: #fff;
+  }
+
+  .invoice-table td {
+    border-bottom: 1px solid #f1f3f5;
+  }
+
+  .invoice-table td:last-child {
+    border-bottom: none;
+  }
+
+  .invoice-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6c757d;
+    margin-bottom: 0.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .invoice-table td.invoice-actions-cell {
+    white-space: normal;
+  }
+
+  .invoice-table .table-btn {
+    width: 100%;
+    margin: 0 0 0.4rem 0;
+  }
+
+  .pdf-viewer-modal {
+    padding: 1rem;
+  }
 }
 
